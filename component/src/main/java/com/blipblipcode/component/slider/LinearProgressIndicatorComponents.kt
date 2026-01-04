@@ -1,6 +1,5 @@
 package com.blipblipcode.component.slider
 
-import androidx.annotation.FloatRange
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
