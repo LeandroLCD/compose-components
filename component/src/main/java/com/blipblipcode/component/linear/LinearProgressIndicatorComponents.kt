@@ -1,4 +1,4 @@
-package com.blipblipcode.component.slider
+package com.blipblipcode.component.linear
 
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.layout.padding

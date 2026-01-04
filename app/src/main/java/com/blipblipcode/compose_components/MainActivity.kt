@@ -25,7 +25,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.unit.dp
 import com.blipblipcode.component.range.RangeSliderComponent
-import com.blipblipcode.component.slider.LinearProgressIndicatorComponents
+import com.blipblipcode.component.linear.LinearProgressIndicatorComponents
 import com.blipblipcode.component.slider.SliderComponent
 import com.blipblipcode.compose_components.ui.theme.ComposecomponentsTheme
 
