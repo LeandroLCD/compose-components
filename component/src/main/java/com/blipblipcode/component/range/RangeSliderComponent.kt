@@ -75,3 +75,72 @@ fun RangeSliderComponent(
         track = track
     )
 }
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun RangeSliderComponent(
+    value: ClosedFloatingPointRange<Float>,
+    modifier: Modifier = Modifier,
+    onValueChange: (ClosedFloatingPointRange<Float>) -> Unit = {},
+    onValueChangeFinished: (() -> Unit)? = null,
+    steps: Int ,
+    valueRange: ClosedFloatingPointRange<Float> = 0f..1f,
+    enabled: Boolean = true,
+    thumbSize: DpSize = DpSize(20.dp, 20.dp),
+    trackHeight: Dp = 10.dp,
+    tickSize: Dp = 6.dp,
+    colors: SliderColorsDefaults = SliderDefaults.colors(
+        thumbColor = MaterialTheme.colorScheme.primary,
+        activeTrackColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.8f),
+        inactiveTrackColor = MaterialTheme.colorScheme.surfaceContainerLow,
+        activeTickColor = MaterialTheme.colorScheme.surfaceContainerLow,
+        inactiveTickColor = MaterialTheme.colorScheme.primary,
+        disabledThumbColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.7f),
+        disabledActiveTrackColor = MaterialTheme.colorScheme.surfaceContainer.copy(alpha = 0.7f),
+        disabledInactiveTrackColor = MaterialTheme.colorScheme.surfaceContainerLow.copy(alpha = 0.7f),
+        disabledActiveTickColor = MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = 0.7f),
+        disabledInactiveTickColor = MaterialTheme.colorScheme.surfaceContainerHighest.copy(alpha = 0.7f),
+    ),
+    startInteractionSource: MutableInteractionSource = remember { MutableInteractionSource() },
+    endInteractionSource: MutableInteractionSource = remember { MutableInteractionSource() },
+    startThumb: @Composable (RangeSliderState) -> Unit = {
+        SliderDefaults.Thumb(
+            interactionSource = startInteractionSource,
+            colors = colors,
+            enabled = enabled,
+            thumbSize = thumbSize
+        )
+    },
+    endThumb: @Composable (RangeSliderState) -> Unit = {
+        SliderDefaults.Thumb(
+            interactionSource = endInteractionSource,
+            colors = colors,
+            enabled = enabled,
+            thumbSize = thumbSize
+        )
+    },
+    track: @Composable (RangeSliderState) -> Unit = { rangeState ->
+        RangeSliderDefaults.Track(
+            colors = colors,
+            enabled = enabled,
+            rangeSliderState = rangeState,
+            trackHeight = trackHeight,
+            tickSize = tickSize,
+            steps = steps
+        )
+    },
+) {
+    MaterialRangeSlider(
+        value = value,
+        modifier = modifier,
+        onValueChange = onValueChange,
+        onValueChangeFinished = onValueChangeFinished,
+        steps = steps,
+        valueRange = valueRange,
+        enabled = enabled,
+        colors = colors.toMaterialSliderColors(),
+        startThumb = startThumb,
+        endThumb = endThumb,
+        track = track
+    )
+}
