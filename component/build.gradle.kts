@@ -2,8 +2,8 @@ import org.jetbrains.kotlin.gradle.dsl.JvmTarget
 
 plugins {
     alias(libs.plugins.android.library)
-    alias(libs.plugins.kotlin.android)
-     alias(libs.plugins.kotlin.compose)
+    alias(libs.plugins.kotlin.compose)
+    `maven-publish`
 }
 
 android {
@@ -30,14 +30,42 @@ android {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
     }
-    kotlin {
-        compilerOptions {
-            jvmTarget = JvmTarget.JVM_17
-            freeCompilerArgs.add("-XXLanguage:+PropertyParamAnnotationDefaultTargetMode")
-        }
-    }
     buildFeatures {
         compose = true
+    }
+    publishing {
+        singleVariant("release") {
+            withSourcesJar()
+        }
+    }
+}
+kotlin {
+    compilerOptions {
+        jvmTarget = JvmTarget.JVM_17
+        freeCompilerArgs.add("-XXLanguage:+PropertyParamAnnotationDefaultTargetMode")
+    }
+}
+publishing {
+    publications {
+        create<MavenPublication>("release") {
+            groupId = "com.github.LeandroLCD"
+            artifactId = "query"
+            version = project.version.toString()
+        }
+    }
+}
+
+afterEvaluate {
+    val releaseComponent = components.findByName("release")
+    if (releaseComponent != null) {
+        publishing {
+            publications {
+                val pub = getByName("release") as MavenPublication
+                pub.from(releaseComponent)
+            }
+        }
+    } else {
+        logger.warn("Android 'release' component not found; maven publication won't include component artifacts.")
     }
 }
 
