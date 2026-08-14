@@ -1,0 +1,13 @@
+# CODEOWNERS — quién debe aprobar los cambios en cada path
+# Sintaxis: <patrón> <@usuario-o-equipo>
+# El owner del repo está asignado a todo, así que con "Require review from
+# Code Owners" activado en la rama master, cualquier cambio al proyecto necesita
+# su revisión (salvo bypass explícito en la configuración de protección).
+
+# Por defecto, todo el repo pertenece al owner.
+/ @LeandroLCD
+
+# Documentación y CI pueden tener owners relajados si querés diferenciarlos
+# más adelante, por ejemplo:
+# /.github/    @LeandroLCD
+# /docs/       @LeandroLCD

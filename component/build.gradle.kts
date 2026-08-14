@@ -49,7 +49,7 @@ publishing {
     publications {
         create<MavenPublication>("release") {
             groupId = "com.github.LeandroLCD"
-            artifactId = "query"
+            artifactId = "compose-components"
             version = project.version.toString()
         }
     }
@@ -78,4 +78,8 @@ dependencies {
     testImplementation(libs.junit)
     androidTestImplementation(libs.androidx.junit)
     androidTestImplementation(libs.androidx.espresso.core)
+    androidTestImplementation(platform(libs.androidx.compose.bom))
+    androidTestImplementation(libs.androidx.compose.ui.test.junit4)
+    androidTestImplementation(libs.androidx.compose.ui.test.manifest)
+    debugImplementation(libs.androidx.compose.ui.test.manifest)
 }

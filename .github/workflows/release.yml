@@ -1,0 +1,422 @@
+name: 🚀 Release — Deploy from Master
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Release pipeline. Triggers ONLY on PR close events against master.
+# Gates on the PR having been merged.
+#
+# Jobs:
+#   1. check-tag      — re-validate version (semver bump + no duplicate tag).
+#   2. build-release  — assemble :component release AAR and upload as artifact.
+#   3. create-release — create GitHub Release + tag and attach the AAR.
+#   4. jitpack-build  — wait for JitPack to index the tag and print the log.
+# ─────────────────────────────────────────────────────────────────────────────
+on:
+  pull_request:
+    branches:
+      - master
+    types: [closed]
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event.action != 'closed' }}
+
+jobs:
+
+  # ─────────────────────────────────────────────────────────────────────────
+  # STEP 1 — Check Tag Availability & Version Bump
+  # ─────────────────────────────────────────────────────────────────────────
+  check-tag:
+    name: 🏷️ Step 1 — Check Tag & Version Bump
+    runs-on: ubuntu-latest
+    if: github.event.pull_request.merged == true
+    timeout-minutes: 10
+
+    permissions:
+      contents: read
+
+    outputs:
+      version:      ${{ steps.extract-version.outputs.version }}
+      tag_name:     ${{ steps.extract-version.outputs.tag_name }}
+      latest_tag:   ${{ steps.validate-version.outputs.latest_tag }}
+
+    steps:
+      - name: 📥 Checkout code
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - name: 📌 Extract version from build.gradle.kts
+        id: extract-version
+        run: |
+          VERSION=$(grep -oP 'version\s*=\s*"\K[^"]+' build.gradle.kts 2>/dev/null | head -1 || true)
+
+          if [ -z "$VERSION" ]; then
+            echo "❌ No se encontró 'version = \"...\"' en build.gradle.kts"
+            exit 1
+          fi
+
+          TAG_NAME="v${VERSION}"
+          echo "version=${VERSION}"   >> $GITHUB_OUTPUT
+          echo "tag_name=${TAG_NAME}" >> $GITHUB_OUTPUT
+          echo "📌 Versión en Gradle: ${VERSION}  →  Tag a crear: ${TAG_NAME}"
+
+      - name: "🔍 Validate: new tag > latest tag & no duplicate"
+        id: validate-version
+        run: |
+          NEW_VERSION="${{ steps.extract-version.outputs.version }}"
+          NEW_TAG="${{ steps.extract-version.outputs.tag_name }}"
+
+          semver_gt() {
+            local A="${1#v}" B="${2#v}"
+            local IFS=.
+            read -ra VA <<< "$A"
+            read -ra VB <<< "$B"
+            for i in 0 1 2; do
+              local a="${VA[$i]:-0}" b="${VB[$i]:-0}"
+              if   (( 10#$a > 10#$b )); then return 0
+              elif (( 10#$a < 10#$b )); then return 1
+              fi
+            done
+            return 1
+          }
+
+          LATEST_TAG=$(git tag -l 'v*' | sort -V | tail -1)
+
+          if [ -z "$LATEST_TAG" ]; then
+            echo "ℹ️  No hay tags previos en el repo. Primer release: ${NEW_TAG}"
+            echo "latest_tag=ninguno" >> $GITHUB_OUTPUT
+            echo "✅ Validación superada — primer release."
+            exit 0
+          fi
+
+          echo "latest_tag=${LATEST_TAG}" >> $GITHUB_OUTPUT
+          echo "🏷️  Último tag existente : ${LATEST_TAG}"
+          echo "🆕 Nuevo tag a crear    : ${NEW_TAG}"
+
+          if git ls-remote --tags origin "refs/tags/${NEW_TAG}" | grep -q "${NEW_TAG}"; then
+            echo ""
+            echo "❌ ERROR: El tag ${NEW_TAG} ya existe en el repositorio."
+            exit 1
+          fi
+
+          if semver_gt "$NEW_VERSION" "$LATEST_TAG"; then
+            echo ""
+            echo "✅ Validación superada: ${NEW_TAG} > ${LATEST_TAG}"
+          else
+            echo ""
+            echo "❌ ERROR: La versión ${NEW_VERSION} NO es mayor que el último tag ${LATEST_TAG}."
+            exit 1
+          fi
+
+  # ─────────────────────────────────────────────────────────────────────────
+  # STEP 2 — Build :component Release AAR
+  # ─────────────────────────────────────────────────────────────────────────
+  build-release:
+    name: 🏗️ Step 2 — Build :component Release AAR
+    runs-on: ubuntu-latest
+    needs: [check-tag]
+    if: github.event.pull_request.merged == true
+    timeout-minutes: 30
+
+    permissions:
+      contents: read
+
+    steps:
+      - name: 📥 Checkout code
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 1
+
+      - name: ☕ Set up JDK 17
+        uses: actions/setup-java@v5
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+          cache: gradle
+
+      - name: 📦 Restore Gradle cache (master-first)
+        id: gradle-cache
+        uses: actions/cache/restore@v6
+        with:
+          path: |
+            ~/.gradle/caches
+            ~/.gradle/wrapper
+          key: gradle-${{ runner.os }}-${{ github.ref_name }}-${{ hashFiles('**/*.gradle*', '**/gradle-wrapper.properties', '**/gradle/libs.versions.toml') }}
+          restore-keys: |
+            gradle-${{ runner.os }}-master-
+            gradle-${{ runner.os }}-
+
+      - name: 💾 Save Gradle cache (only master / on miss)
+        if: github.ref_name == 'master' || steps.gradle-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v5
+        with:
+          path: |
+            ~/.gradle/caches
+            ~/.gradle/wrapper
+          key: ${{ steps.gradle-cache.outputs.cache-primary-key }}
+
+      - name: 🔧 Grant execute permission to gradlew
+        run: chmod +x ./gradlew
+
+      - name: 🏗️ Assemble :component Release
+        run: |
+          ./gradlew :component:assembleRelease \
+            --no-daemon \
+            --warning-mode none \
+            --console=plain \
+            --stacktrace
+
+      - name: 🔎 Locate generated AAR
+        id: find-aar
+        run: |
+          AAR_PATH=$(find component/build/outputs/aar -name "*release*.aar" | head -1)
+          if [ -z "$AAR_PATH" ]; then
+            echo "❌ No AAR release was found in component/build/outputs/aar/"
+            exit 1
+          fi
+          echo "aar_path=${AAR_PATH}" >> $GITHUB_OUTPUT
+          echo "✅ AAR found: ${AAR_PATH}"
+
+      - name: 📦 Upload AAR as workflow artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: compose-components-release-aar
+          path: ${{ steps.find-aar.outputs.aar_path }}
+          retention-days: 7
+          if-no-files-found: error
+
+  # ─────────────────────────────────────────────────────────────────────────
+  # STEP 3 — Create Tag & GitHub Release
+  # ─────────────────────────────────────────────────────────────────────────
+  create-release:
+    name: 🎯 Step 3 — Create Tag & GitHub Release
+    runs-on: ubuntu-latest
+    needs: [build-release, check-tag]
+    if: github.event.pull_request.merged == true
+    timeout-minutes: 10
+
+    permissions:
+      contents: write
+
+    outputs:
+      release_url: ${{ steps.gh-release.outputs.url }}
+
+    steps:
+      - name: 📥 Checkout code
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - name: 📦 Download AAR artifact
+        uses: actions/download-artifact@v8
+        with:
+          name: compose-components-release-aar
+          path: ./release-artifacts
+
+      - name: 🏷️ Create GitHub Release & Tag
+        id: gh-release
+        uses: softprops/action-gh-release@v3
+        with:
+          tag_name: ${{ needs.check-tag.outputs.tag_name }}
+          name: Release ${{ needs.check-tag.outputs.tag_name }}
+          body: |
+            ## 📦 compose-components ${{ needs.check-tag.outputs.tag_name }}
+
+            Publicado automáticamente desde PR #${{ github.event.pull_request.number }}
+            **${{ github.event.pull_request.title }}**
+
+            ---
+
+            ### 📥 Agregar como dependencia via JitPack
+
+            ```kotlin
+            // settings.gradle.kts
+            dependencyResolutionManagement {
+                repositories {
+                    maven { url = uri("https://jitpack.io") }
+                }
+            }
+
+            // build.gradle.kts (module)
+            dependencies {
+                implementation("com.github.LeandroLCD:compose-components:${{ needs.check-tag.outputs.version }}")
+            }
+            ```
+
+            ---
+            📅 Generado el: ${{ github.event.pull_request.merged_at }}
+          files: ./release-artifacts/*.aar
+          make_latest: true
+          fail_on_unmatched_files: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  # ─────────────────────────────────────────────────────────────────────────
+  # STEP 4 — JitPack Build Log
+  # ─────────────────────────────────────────────────────────────────────────
+  jitpack-build:
+    name: 📡 Step 4 — JitPack Build Log
+    runs-on: ubuntu-latest
+    needs: [create-release, check-tag]
+    if: github.event.pull_request.merged == true
+    timeout-minutes: 20
+
+    outputs:
+      jitpack_status:  ${{ steps.poll-jitpack.outputs.jitpack_status }}
+      jitpack_log_url: ${{ steps.poll-jitpack.outputs.jitpack_log_url }}
+
+    steps:
+      - name: ⏳ Initial wait — let JitPack index the new tag
+        run: |
+          echo "⏳ Esperando 40s para que JitPack indexe el tag ${{ needs.check-tag.outputs.tag_name }}..."
+          sleep 40
+
+      - name: 🚀 Trigger JitPack build & poll status
+        id: poll-jitpack
+        run: |
+          VERSION="${{ needs.check-tag.outputs.version }}"
+          GROUP="com.github.LeandroLCD"
+          ARTIFACT="compose-components"
+          LOG_URL="https://jitpack.io/${GROUP//.//}/${ARTIFACT}/${VERSION}/build.log"
+          API_URL="https://jitpack.io/api/builds/${GROUP}/${ARTIFACT}/${VERSION}"
+
+          echo "🔗 Log URL : ${LOG_URL}"
+          echo "🔗 API URL : ${API_URL}"
+
+          echo "🚀 Disparando build en JitPack..."
+          curl -s -o /dev/null -w "HTTP %{http_code}\n" \
+            "https://jitpack.io/${GROUP//.//}/${ARTIFACT}/${VERSION}/${ARTIFACT}-${VERSION}.aar" || true
+
+          MAX=15
+          ATTEMPT=0
+          STATUS="unknown"
+
+          while [ $ATTEMPT -lt $MAX ]; do
+            ATTEMPT=$((ATTEMPT + 1))
+            echo "⏳ Intento ${ATTEMPT}/${MAX} — consultando estado en JitPack..."
+
+            RESPONSE=$(curl -s --max-time 15 "${API_URL}" 2>/dev/null || echo '{}')
+            STATUS=$(echo "$RESPONSE" | python3 -c \
+              "import sys,json; d=json.load(sys.stdin); print(d.get('status','unknown'))" 2>/dev/null || echo "unknown")
+
+            echo "   📊 Status: ${STATUS}"
+
+            if [ "$STATUS" = "ok" ]; then
+              echo "✅ JitPack build exitoso!"
+              break
+            elif [ "$STATUS" = "error" ]; then
+              echo "❌ JitPack build falló. Revisa el log:"
+              echo "   ${LOG_URL}"
+              break
+            fi
+
+            [ $ATTEMPT -lt $MAX ] && sleep 30
+          done
+
+          echo "jitpack_status=${STATUS}"   >> $GITHUB_OUTPUT
+          echo "jitpack_log_url=${LOG_URL}" >> $GITHUB_OUTPUT
+
+      - name: 📄 Print JitPack build log
+        if: always()
+        run: |
+          VERSION="${{ needs.check-tag.outputs.version }}"
+          LOG_URL="https://jitpack.io/com/github/LeandroLCD/compose-components/${VERSION}/build.log"
+          echo "════════════════════════════════════════"
+          echo " JitPack Build Log — ${VERSION}"
+          echo "════════════════════════════════════════"
+          curl -s --max-time 30 "${LOG_URL}" || echo "⚠️  No se pudo obtener el log aún. URL: ${LOG_URL}"
+          echo "════════════════════════════════════════"
+
+  # ─────────────────────────────────────────────────────────────────────────
+  # PR ANNOTATION — Resumen del pipeline como comentario en el PR
+  # ─────────────────────────────────────────────────────────────────────────
+  pr-summary:
+    name: 📝 PR Summary Annotation
+    runs-on: ubuntu-latest
+    needs: [check-tag, build-release, create-release, jitpack-build]
+    if: always() && github.event.pull_request.merged == true
+    timeout-minutes: 5
+
+    permissions:
+      pull-requests: write
+
+    steps:
+      - name: 📝 Post pipeline summary comment on PR
+        uses: actions/github-script@v9
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            const icon = (r) => ({
+              success: '✅', failure: '❌', skipped: '⏭️', cancelled: '🚫'
+            }[r] ?? '⚠️');
+
+            const version    = `${{ needs.check-tag.outputs.version }}`;
+            const tagName    = `${{ needs.check-tag.outputs.tag_name }}`;
+            const latestTag  = `${{ needs.check-tag.outputs.latest_tag }}`;
+            const releaseUrl = `${{ needs.create-release.outputs.release_url }}`;
+            const jitpackStatus = `${{ needs.jitpack-build.outputs.jitpack_status }}`;
+            const jitpackLog    = `${{ needs.jitpack-build.outputs.jitpack_log_url }}`;
+
+            const r1 = `${{ needs.check-tag.result }}`;
+            const r2 = `${{ needs.build-release.result }}`;
+            const r3 = `${{ needs.create-release.result }}`;
+            const r4 = `${{ needs.jitpack-build.result }}`;
+
+            const releaseLink = releaseUrl ? `[Ver GitHub Release](${releaseUrl})` : '—';
+            const jitpackRow = jitpackLog
+              ? `[📄 Build Log](${jitpackLog}) · Status: \`${jitpackStatus}\``
+              : '—';
+            const versionArrow = (latestTag && latestTag !== 'ninguno' && tagName)
+              ? `\`${latestTag}\` → \`${tagName}\``
+              : tagName ? `primer release: \`${tagName}\`` : 'N/A';
+
+            const depBlock = version ? `
+            ### 📥 Dependency (JitPack)
+            \`\`\`kotlin
+            // settings.gradle.kts
+            maven { url = uri("https://jitpack.io") }
+
+            // build.gradle.kts
+            implementation("com.github.LeandroLCD:compose-components:${version}")
+            \`\`\`` : '';
+
+            const body = `## 🚀 Release Pipeline — Resumen
+
+            | # | Paso | Estado | Detalle |
+            |---|------|--------|---------|
+            | 1️⃣ | Check Tag & Bump | ${icon(r1)} \`${r1}\` | ${versionArrow} |
+            | 2️⃣ | Build Release AAR | ${icon(r2)} \`${r2}\` | \`./gradlew :component:assembleRelease\` |
+            | 3️⃣ | GitHub Release | ${icon(r3)} \`${r3}\` | Tag \`${tagName || 'N/A'}\` + AAR · ${releaseLink} |
+            | 4️⃣ | JitPack Build | ${icon(r4)} \`${r4}\` | ${jitpackRow} |
+
+            **📌 Versión nueva:** \`${version || 'no detectada'}\` &nbsp;·&nbsp; **🏷️ Último tag:** \`${latestTag || '—'}\`
+            ${depBlock}
+
+            ---
+            <sub>🤖 Generado automáticamente por el Release Pipeline · Run #${{ github.run_number }}</sub>`;
+
+            const comments = await github.rest.issues.listComments({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+            });
+
+            const botComment = comments.data.find(c =>
+              c.user.type === 'Bot' && c.body.includes('Release Pipeline — Resumen')
+            );
+
+            if (botComment) {
+              await github.rest.issues.updateComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                comment_id: botComment.id,
+                body,
+              });
+            } else {
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: context.issue.number,
+                body,
+              });
+            }
