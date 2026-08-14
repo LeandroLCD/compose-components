@@ -35,7 +35,7 @@ Una librería de componentes de UI altamente personalizables para **Jetpack Comp
 - 🎨 **Personalización avanzada**: Control total sobre colores, tamaños y formas
 - 🧩 **Basado en Material 3**: Integración nativa con el sistema de diseño de Material
 - ⚡ **Fácil de usar**: API intuitiva y compatible con los componentes existentes
-- 🖌️ **Tinte selectivo por capa (`tintCap`)**: Pinta solo las capas que quieras de un `ImageVector` y preserva el resto
+- 🖌️ **Tinte selectivo por capa (`tintCap` y `tintStroke`)**: Pinta solo las capas que quieras de un `ImageVector` (relleno **y/o** trazo) y preserva el resto
 - 🧪 **Cubierto por tests**: Suite de tests unitarios (JVM) e instrumentados (Compose UI tests)
 - 📱 **Compatible con API 24+**: Soporte para una amplia gama de dispositivos
 - 🚀 **Release automatizado**: Pipeline de CI que publica AAR + release + JitPack al mergear a `master`
@@ -162,7 +162,9 @@ Wrapper sobre `androidx.compose.material3.Icon` que añade el parámetro `tintCa
 | `contentDescription` | `String?` | Descripción para accesibilidad |
 | `modifier` | `Modifier` | Modificador estándar |
 | `tint` | `Color` | Color a aplicar (por defecto `LocalContentColor.current`) |
-| `tintCap` | `TintCap` | Alcance del tint (ver tabla abajo, por defecto `TintCap.All`) |
+| `tintCap` | `TintCap` | Alcance del tint del **relleno** (ver tabla abajo, por defecto `TintCap.All`) |
+| `tintStroke` | `Color?` | Color del **trazo** a aplicar (opcional, por defecto `null`) |
+| `tintStrokeCap` | `TintStroke` | Alcance del tint del **trazo** (por defecto `TintStroke.All`) |
 
 **Variantes de `TintCap`:**
 | Variante | Descripción |
@@ -229,14 +231,73 @@ El módulo incluye un `ImageVector` de camión multi-capa pensado para ejercitar
 Índice 3 → cargo  (caja de carga)            #43A047
 ```
 
-Úsalo para prototipar y validar el comportamiento de `tintCap` sin necesidad de un asset externo:
+Cada capa además tiene un trazo por defecto con color distintivo para que puedas ejercitar `tintStroke`:
+
+```
+Índice 0 → wheels (trazo)                    #212121
+Índice 1 → body   (trazo)                    #B71C1C
+Índice 2 → cab    (trazo)                    #0D47A1
+Índice 3 → cargo  (trazo)                    #1B5E20
+```
+
+Úsalo para prototipar y validar el comportamiento de `tintCap` y `tintStroke` sin necesidad de un asset externo:
 
 ```kotlin
 IconComponents(
     imageVector = Icons.MapTruck,
     contentDescription = "Truck",
     tint = Color.Yellow,
-    tintCap = TintCap.layers(0, 3)  // solo neumáticos y carga en amarillo
+    tintCap = TintCap.layers(0, 3),            // solo neumáticos y carga en amarillo
+    tintStroke = Color(0xFF00BCD4),            // trazo cyan en todas las capas
+    tintStrokeCap = TintStroke.All
+)
+```
+
+#### Tinte selectivo de **trazo** (`tintStroke` + `tintStrokeCap`)
+
+Además de controlar el color del **relleno** con `tintCap`, `IconComponents` admite `tintStroke` para controlar el color del **trazo** (stroke) de cada capa de forma independiente.
+
+- `tintStroke: Color?` — color del trazo. Cuando es `null` (default) no se transforma el trazo del vector.
+- `tintStrokeCap: TintStroke` — qué capas reciben el color del trazo, con las mismas variantes que `TintCap`:
+  | Variante | Descripción |
+  |----------|-------------|
+  | `TintStroke.All` | Recolorrea **todas** las capas (default) |
+  | `TintStroke.Undefined` | **No aplica** ninguna transformación; el trazo se conserva |
+  | `TintStroke.index(n)` | Recolorrea **solo** la capa top-level en el índice `n` |
+  | `TintStroke.range(rango)` | Recolorrea **todas** las capas cuyo índice esté dentro del rango |
+  | `TintStroke.layers(1, 3)` | Recolorrea **solo** las capas top-level en los índices indicados |
+
+> 💡 **¿Por qué?** Un mismo vector puede tener relleno de marca (que quieres preservar) y trazos que sí deben personalizarse (color de acento, modo oscuro, estados hover, etc.). Con `tintStroke`/`tintStrokeCap` puedes controlar el color del trazo capa por capa, igual que con `tintCap`/`TintCap`.
+
+**Ejemplos:**
+
+```kotlin
+// Recolorear el trazo de TODAS las capas con un color de acento
+IconComponents(
+    imageVector = Icons.MapTruck,
+    contentDescription = "Truck",
+    tint = Color.Yellow,
+    tintCap = TintCap.Undefined,        // relleno intacto
+    tintStroke = Color(0xFF00BCD4),     // trazo cyan
+    tintStrokeCap = TintStroke.All
+)
+
+// Cambiar el color del trazo SOLO de los neumáticos y la carga
+IconComponents(
+    imageVector = Icons.MapTruck,
+    contentDescription = "Truck",
+    tintStroke = Color.Red,
+    tintStrokeCap = TintStroke.layers(0, 3)
+)
+
+// Combinar relleno y trazo sobre capas diferentes
+IconComponents(
+    imageVector = Icons.MapTruck,
+    contentDescription = "Truck",
+    tint = Color(0xFF4CAF50),                       // relleno verde solo en ruedas y carga
+    tintCap = TintCap.layers(0, 3),
+    tintStroke = Color(0xFFFF9800),                 // trazo naranja solo en chasis y cabina
+    tintStrokeCap = TintStroke.layers(1, 2)
 )
 ```
 
@@ -257,7 +318,9 @@ Wrapper sobre `androidx.compose.foundation.Image` con la misma potencia de `tint
 | `alpha` | `Float` | Opacidad (default `DefaultAlpha`) |
 | `colorFilter` | `ColorFilter?` | Filtro de color opcional adicional |
 | `tint` | `Color?` | Color a aplicar (opcional) |
-| `tintCap` | `TintCap` | Alcance del tint (default `TintCap.Undefined`) |
+| `tintCap` | `TintCap` | Alcance del tint del **relleno** (default `TintCap.Undefined`) |
+| `tintStroke` | `Color?` | Color del **trazo** a aplicar (opcional) |
+| `tintStrokeCap` | `TintStroke` | Alcance del tint del **trazo** (default `TintStroke.All`) |
 
 **Ejemplo de uso:**
 
@@ -286,6 +349,54 @@ ImageComponents(
     contentDescription = "Logo",
     modifier = Modifier.size(120.dp),
     tintCap = TintCap.Undefined
+)
+```
+
+#### Tinte selectivo de **trazo** (`tintStroke` + `tintStrokeCap`)
+
+Además de controlar el color del **relleno** con `tintCap`, los componentes `IconComponents` e `ImageComponents` admiten `tintStroke` para controlar el color del **trazo** (stroke) de cada capa de forma independiente.
+
+- `tintStroke: Color?` — color del trazo. Cuando es `null` (default) no se transforma el trazo del vector.
+- `tintStrokeCap: TintStroke` — qué capas reciben el color del trazo, con las mismas variantes que `TintCap`:
+  | Variante | Descripción |
+  |----------|-------------|
+  | `TintStroke.All` | Recolorrea **todas** las capas (default) |
+  | `TintStroke.Undefined` | **No aplica** ninguna transformación; el trazo se conserva |
+  | `TintStroke.index(n)` | Recolorrea **solo** la capa top-level en el índice `n` |
+  | `TintStroke.range(rango)` | Recolorrea **todas** las capas cuyo índice esté dentro del rango |
+  | `TintStroke.layers(1, 3)` | Recolorrea **solo** las capas top-level en los índices indicados |
+
+> 💡 **¿Por qué?** Un mismo vector puede tener relleno de marca (que quieres preservar) y trazos que sí deben personalizarse (color de acento, modo oscuro, estados hover, etc.). Con `tintStroke`/`tintStrokeCap` puedes controlar el color del trazo capa por capa, igual que con `tintCap`/`TintCap`.
+
+**Ejemplos:**
+
+```kotlin
+// Recolorear el trazo de TODAS las capas con un color de acento
+IconComponents(
+    imageVector = Icons.MapTruck,
+    contentDescription = "Truck",
+    tint = Color.Yellow,
+    tintCap = TintCap.Undefined,        // relleno intacto
+    tintStroke = Color(0xFF00BCD4),     // trazo cyan
+    tintStrokeCap = TintStroke.All
+)
+
+// Cambiar el color del trazo SOLO de los neumáticos y la carga
+IconComponents(
+    imageVector = Icons.MapTruck,
+    contentDescription = "Truck",
+    tintStroke = Color.Red,
+    tintStrokeCap = TintStroke.layers(0, 3)
+)
+
+// Combinar relleno y trazo sobre capas diferentes
+IconComponents(
+    imageVector = Icons.MapTruck,
+    contentDescription = "Truck",
+    tint = Color(0xFF4CAF50),                       // relleno verde solo en ruedas y carga
+    tintCap = TintCap.layers(0, 3),
+    tintStroke = Color(0xFFFF9800),                 // trazo naranja solo en chasis y cabina
+    tintStrokeCap = TintStroke.layers(1, 2)
 )
 ```
 
@@ -332,9 +443,10 @@ Cada componente está cubierto por tests. Para ejecutarlos:
 | `LinearProgressIndicatorComponents` | — | — |
 | `RangeSliderComponent` | — | — |
 | `TintCap` | ✅ 9 tests | ✅ vía `Icon` / `Image` |
-| `ImageVectorTinter` | ✅ 7 tests | ✅ vía `Icon` / `Image` |
-| `IconComponents` (con `tintCap`) | — | ✅ 6 tests |
-| `ImageComponents` (con `tintCap`) | — | ✅ 5 tests |
+| `TintStroke` | ✅ 9 tests | ✅ vía `Icon` / `Image` |
+| `ImageVectorTinter` | ✅ 7 tests + 6 stroke | ✅ vía `Icon` / `Image` |
+| `IconComponents` (con `tintCap` / `tintStroke`) | — | ✅ 6 tests + 7 stroke |
+| `ImageComponents` (con `tintCap` / `tintStroke`) | — | ✅ 5 tests + 6 stroke |
 
 Los UI tests renderizan el fixture `Icons.MapTruck` (4 capas top-level con colores distinguibles) y muestrean píxeles del bitmap capturado para verificar que cada variante de `tintCap` pinta exactamente las capas correctas.
 

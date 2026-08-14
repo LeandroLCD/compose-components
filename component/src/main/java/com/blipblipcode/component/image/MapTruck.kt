@@ -8,7 +8,8 @@ import androidx.compose.ui.graphics.vector.group
 import androidx.compose.ui.unit.dp
 
 /**
- * A multi-layer truck icon used as a UI-test fixture for [Icon] / [Image] with [TintCap].
+ * A multi-layer truck icon used as a UI-test fixture for [Icon] / [Image] with [TintCap]
+ * and [TintStroke].
  *
  * Top-level layers (indices) are drawn on non-overlapping regions so each one can be
  * pixel-tested in isolation:
@@ -17,8 +18,8 @@ import androidx.compose.ui.unit.dp
  *   2 → `cab`    (driver cabin shell + window, top-right)
  *   3 → `cargo`  (cargo box, top-left)
  *
- * Each layer uses a distinctive default colour so it is easy to verify which layers get
- * tinted by each [TintCap] variant.
+ * Each layer uses a distinctive default fill colour and a distinctive default stroke colour
+ * so it is easy to verify which layers get tinted by each [TintCap] / [TintStroke] variant.
  */
 val Icons.MapTruck: ImageVector
     get() = _MapTruck ?: ImageVector.Builder(
@@ -73,7 +74,10 @@ val Icons.MapTruck: ImageVector
             ),
             name = "body",
             fill = SolidColor(Color(0xFFE53935)),
-            fillAlpha = 1f
+            fillAlpha = 1f,
+            stroke = SolidColor(Color(0xFFB71C1C)),
+            strokeAlpha = 1f,
+            strokeLineWidth = 1.5f
         )
 
         // Layer 2: driver cabin (group: cabin shell + window, both tinted together)
@@ -99,7 +103,10 @@ val Icons.MapTruck: ImageVector
                 ),
                 name = "cab-shell",
                 fill = SolidColor(Color(0xFF1E88E5)),
-                fillAlpha = 1f
+                fillAlpha = 1f,
+                stroke = SolidColor(Color(0xFF0D47A1)),
+                strokeAlpha = 1f,
+                strokeLineWidth = 1.5f
             )
             addPath(
                 pathData = listOf(
@@ -111,7 +118,10 @@ val Icons.MapTruck: ImageVector
                 ),
                 name = "cab-window",
                 fill = SolidColor(Color(0xFFBBDEFB)),
-                fillAlpha = 1f
+                fillAlpha = 1f,
+                stroke = SolidColor(Color(0xFF0D47A1)),
+                strokeAlpha = 1f,
+                strokeLineWidth = 1.5f
             )
         }
 
@@ -126,7 +136,10 @@ val Icons.MapTruck: ImageVector
             ),
             name = "cargo",
             fill = SolidColor(Color(0xFF43A047)),
-            fillAlpha = 1f
+            fillAlpha = 1f,
+            stroke = SolidColor(Color(0xFF1B5E20)),
+            strokeAlpha = 1f,
+            strokeLineWidth = 1.5f
         )
     }.build().also { _MapTruck = it }
 

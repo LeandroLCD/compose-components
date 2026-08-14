@@ -9,11 +9,16 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 
 /**
- * A thin wrapper around Material 3's [MaterialIcon] that adds [tintCap] support for vector
- * drawables. [tintCap] controls which layers of the [imageVector] receive the [tint] color;
- * the rest are rendered with their original colors.
+ * A thin wrapper around Material 3's [MaterialIcon] that adds [tintCap] and [tintStroke]
+ * support for vector drawables.
+ *
+ * - [tintCap] controls which layers of the [imageVector] receive the fill [tint] color; the
+ *   rest are rendered with their original fill colors.
+ * - [tintStroke] is the optional color used to recolor the stroke of the layers selected by
+ *   [tintStrokeCap]. When `null` (default) the vector's original strokes are preserved.
  *
  * @see TintCap
+ * @see TintStroke
  */
 @Composable
 fun IconComponents(
@@ -22,12 +27,19 @@ fun IconComponents(
     modifier: Modifier = Modifier,
     tint: Color = LocalContentColor.current,
     tintCap: TintCap = TintCap.All,
+    tintStroke: Color? = null,
+    tintStrokeCap: TintStroke = TintStroke.All,
 ) {
-    val recolored: ImageVector? = remember(imageVector, tint, tintCap) {
+    val recolored: ImageVector? = remember(imageVector, tint, tintCap, tintStroke, tintStrokeCap) {
+        val fillNeedsRebuild = !tintCap.isUndefined && tintCap !== TintCap.All
+        // Material Icon's `tint` only recolors the fill. To recolor the stroke we always
+        // need to rebuild the vector, even when tintStrokeCap is All.
+        val strokeNeedsRebuild = tintStroke != null && !tintStrokeCap.isUndefined
+
         when {
-            tintCap.isUndefined -> null
-            tintCap === TintCap.All -> null
-            else -> recolorImageVector(imageVector, tint, tintCap)
+            fillNeedsRebuild || strokeNeedsRebuild ->
+                recolorImageVector(imageVector, tint, tintCap, tintStroke, tintStrokeCap)
+            else -> null
         }
     }
     val effectiveTint: Color = when {
