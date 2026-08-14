@@ -228,17 +228,17 @@ jobs:
           distribution: 'temurin'
           java-version: '17'
 
-      - name: 🐘 Restore Gradle cache (shared, master-first)
+      - name: 🐘 Restore Gradle cache (shared across workflows)
         id: gradle-cache
         uses: actions/cache/restore@v6
         with:
           path: |
             ~/.gradle/caches
             ~/.gradle/wrapper
-          key: ${{ runner.os }}-gradle-${{ github.ref_name }}-${{ hashFiles('**/*.gradle*', '**/gradle-wrapper.properties', '**/gradle/libs.versions.toml') }}
+          key: gradle-${{ runner.os }}-${{ github.ref_name }}-${{ hashFiles('**/*.gradle*', '**/gradle-wrapper.properties', '**/gradle/libs.versions.toml') }}
           restore-keys: |
-            ${{ runner.os }}-gradle-master-
-            ${{ runner.os }}-gradle-
+            gradle-${{ runner.os }}-master-
+            gradle-${{ runner.os }}-
 
       - name: 💾 Save Gradle cache (only master / on miss)
         if: github.ref_name == 'master' || steps.gradle-cache.outputs.cache-hit != 'true'
