@@ -477,15 +477,6 @@ La rama `master` está protegida y solo recibe cambios vía Pull Request:
 - ✅ Conversaciones sin resolver bloquean el merge
 - ✅ Reglas aplicadas incluso a administradores (`enforce_admins: true`)
 
-Como `@LeandroLCD` es el único code owner, puede auto-aprobar sus propios PRs (GitHub lo solicita como revisor automáticamente y puede hacer click en "Approve" en su propio PR). Los PRs de cualquier otro contributor necesitan su revisión antes de mergear.
-
-La configuración exacta está versionada en [`.github/branch-protection/master.json`](.github/branch-protection/master.json) y puede re-aplicarse con:
-
-```bash
-gh api --method PUT \
-  repos/LeandroLCD/compose-components/branches/master/protection \
-  --input .github/branch-protection/master.json
-```
 
 ---
 
