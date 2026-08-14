@@ -10,22 +10,33 @@ import androidx.compose.ui.graphics.vector.VectorPath
 import androidx.compose.ui.graphics.vector.group
 
 /**
- * Rebuilds [source] into a new [ImageVector] applying [tint] only to the layers matched by
- * [tintCap]. Layers that do not match keep their original colors.
+ * Rebuilds [source] into a new [ImageVector] applying [tint] only to the fill of the layers
+ * matched by [tintCap], and [strokeTint] only to the stroke of the layers matched by
+ * [strokeTintCap]. Layers (or strokes) that do not match keep their original colors.
  *
- * When [tintCap] is [TintCap.All] (the default for [Icon]) the source vector is returned
- * untouched and tinting is expected to be applied externally via the standard
- * `tint` parameter — this avoids rebuilding the vector when not needed.
+ * Fill rules:
+ * - When [tintCap] is [TintCap.Undefined] the fill is left untouched.
+ * - When [tintCap] is [TintCap.All] every layer's fill is set to [tint].
+ * - Otherwise only the matching layers' fills are recolored.
  *
- * When [tintCap] is [TintCap.Undefined] (the default for [Image]) the source vector is
- * returned untouched and no tint is applied at any level.
+ * Stroke rules:
+ * - When [strokeTint] is `null` the stroke is left untouched.
+ * - When [strokeTint] is non-null and [strokeTintCap] is [TintStroke.All] every layer's stroke
+ *   is set to [strokeTint].
+ * - When [strokeTint] is non-null and [strokeTintCap] is [TintStroke.Undefined] the stroke is
+ *   left untouched.
+ * - Otherwise only the matching layers' strokes are recolored.
  */
 internal fun recolorImageVector(
     source: ImageVector,
     tint: Color,
-    tintCap: TintCap
+    tintCap: TintCap,
+    strokeTint: Color? = null,
+    strokeTintCap: TintStroke = TintStroke.All,
 ): ImageVector {
-    if (tintCap.isUndefined) return source
+    if (tintCap.isUndefined && (strokeTint == null || strokeTintCap.isUndefined)) {
+        return source
+    }
 
     val builder = ImageVector.Builder(
         name = source.name,
@@ -36,12 +47,23 @@ internal fun recolorImageVector(
     )
 
     val tintBrush: Brush = SolidColor(tint)
+    val strokeBrush: Brush? = strokeTint?.let { SolidColor(it) }
+    val recolorFill = !tintCap.isUndefined
+    val recolorStroke = strokeBrush != null && !strokeTintCap.isUndefined
 
     // Top-level nodes form the layer-index space. Iterate as a snapshot to be safe.
     val topLevel = source.root.toNodeList()
     topLevel.forEachIndexed { index, node ->
-        val shouldTint = tintCap.appliesTo(index)
-        copyNode(builder, node, tintBrush, shouldTint)
+        val shouldTintFill = recolorFill && tintCap.appliesTo(index)
+        val shouldTintStroke = recolorStroke && strokeTintCap.appliesTo(index)
+        copyNode(
+            builder = builder,
+            node = node,
+            tintBrush = tintBrush,
+            shouldTintFill = shouldTintFill,
+            strokeBrush = strokeBrush,
+            shouldTintStroke = shouldTintStroke
+        )
     }
 
     return builder.build()
@@ -51,11 +73,27 @@ private fun copyNode(
     builder: ImageVector.Builder,
     node: VectorNode,
     tintBrush: Brush,
-    shouldTint: Boolean
+    shouldTintFill: Boolean,
+    strokeBrush: Brush?,
+    shouldTintStroke: Boolean,
 ) {
     when (node) {
-        is VectorGroup -> copyGroupInto(builder, node, tintBrush, shouldTint)
-        is VectorPath -> copyPathInto(builder, node, tintBrush, shouldTint)
+        is VectorGroup -> copyGroupInto(
+            builder = builder,
+            sourceGroup = node,
+            tintBrush = tintBrush,
+            shouldTintFill = shouldTintFill,
+            strokeBrush = strokeBrush,
+            shouldTintStroke = shouldTintStroke
+        )
+        is VectorPath -> copyPathInto(
+            builder = builder,
+            sourcePath = node,
+            tintBrush = tintBrush,
+            shouldTintFill = shouldTintFill,
+            strokeBrush = strokeBrush,
+            shouldTintStroke = shouldTintStroke
+        )
     }
 }
 
@@ -63,7 +101,9 @@ private fun copyGroupInto(
     builder: ImageVector.Builder,
     sourceGroup: VectorGroup,
     tintBrush: Brush,
-    shouldTint: Boolean
+    shouldTintFill: Boolean,
+    strokeBrush: Brush?,
+    shouldTintStroke: Boolean,
 ) {
     builder.group(
         name = sourceGroup.name,
@@ -78,7 +118,14 @@ private fun copyGroupInto(
     ) {
         val children = sourceGroup.toNodeList()
         children.forEach { child ->
-            copyNode(this, child, tintBrush, shouldTint)
+            copyNode(
+                builder = this,
+                node = child,
+                tintBrush = tintBrush,
+                shouldTintFill = shouldTintFill,
+                strokeBrush = strokeBrush,
+                shouldTintStroke = shouldTintStroke
+            )
         }
     }
 }
@@ -87,15 +134,17 @@ private fun copyPathInto(
     builder: ImageVector.Builder,
     sourcePath: VectorPath,
     tintBrush: Brush,
-    shouldTint: Boolean
+    shouldTintFill: Boolean,
+    strokeBrush: Brush?,
+    shouldTintStroke: Boolean,
 ) {
     builder.addPath(
         pathData = sourcePath.pathData,
         pathFillType = sourcePath.pathFillType,
         name = sourcePath.name,
-        fill = if (shouldTint) tintBrush else sourcePath.fill,
+        fill = if (shouldTintFill) tintBrush else sourcePath.fill,
         fillAlpha = sourcePath.fillAlpha,
-        stroke = if (shouldTint) tintBrush else sourcePath.stroke,
+        stroke = if (shouldTintStroke) strokeBrush ?: sourcePath.stroke else sourcePath.stroke,
         strokeAlpha = sourcePath.strokeAlpha,
         strokeLineWidth = sourcePath.strokeLineWidth,
         strokeLineCap = sourcePath.strokeLineCap,
