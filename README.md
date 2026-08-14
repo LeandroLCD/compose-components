@@ -4,7 +4,7 @@
 [![Compose BOM](https://img.shields.io/badge/Compose%20BOM-2026.02.00-green.svg)](https://developer.android.com/jetpack/compose)
 [![Material 3](https://img.shields.io/badge/Material%203-Ready-blue.svg)](https://m3.material.io/)
 [![API](https://img.shields.io/badge/API-24%2B-brightgreen.svg)](https://android-arsenal.com/api?level=24)
-[![CI](https://img.shields.io/badge/CI-Release%20Pipeline-blueviolet.svg)](.github/workflows/release-pipeline.yml)
+[![CI](https://img.shields.io/badge/CI-Release%20Pipeline-blueviolet.svg)](.github/workflows/release.yml)
 [![License](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
 Una librería de componentes de UI altamente personalizables para **Jetpack Compose**, construida sobre **Material 3**. Ofrece opciones de personalización avanzadas (tamaños, colores, formas, **tint selectivo por capa**) que van más allá de las configuraciones estándar de Material 3.
@@ -38,7 +38,7 @@ Una librería de componentes de UI altamente personalizables para **Jetpack Comp
 - 🖌️ **Tinte selectivo por capa (`tintCap`)**: Pinta solo las capas que quieras de un `ImageVector` y preserva el resto
 - 🧪 **Cubierto por tests**: Suite de tests unitarios (JVM) e instrumentados (Compose UI tests)
 - 📱 **Compatible con API 24+**: Soporte para una amplia gama de dispositivos
-- 🚀 **Release automatizado**: Pipeline de CI que publica AAR + release + JitPack al mergear a `develop`
+- 🚀 **Release automatizado**: Pipeline de CI que publica AAR + release + JitPack al mergear a `master`
 
 ---
 
@@ -374,7 +374,12 @@ composecomponents/
 │           ├── IconTintCapTest.kt                # 6 tests
 │           └── ImageTintCapTest.kt               # 5 tests
 ├── .github/workflows/
-│   └── release-pipeline.yml                      # CI: tests + build AAR + release + JitPack
+│   ├── workflows/
+│   │   ├── ci.yml                                # CI: tests on every PR to master (open/synchronize)
+│   │   └── release.yml                           # Release: build AAR + tag + GitHub Release + JitPack on PR close
+│   ├── CODEOWNERS                                # Code owners del repo (para branch protection)
+│   └── branch-protection/
+│       └── master.json                           # Config de protección aplicada a master (reproducible vía gh api)
 └── gradle/
     └── libs.versions.toml                        # Catálogo de versiones
 ```
@@ -385,7 +390,7 @@ composecomponents/
 
 ### Desde JitPack (release publicado)
 
-Cada merge a `develop` publica automáticamente un nuevo tag + AAR en GitHub Releases y dispara una build en JitPack.
+Cada merge a `master` publica automáticamente un nuevo tag + AAR en GitHub Releases y dispara una build en JitPack.
 
 Agrega el repositorio de JitPack en tu `settings.gradle.kts`:
 
@@ -452,12 +457,35 @@ android {
 ¡Las contribuciones son bienvenidas! Si deseas contribuir:
 
 1. Haz un Fork del proyecto
-2. Crea una rama desde `develop` para tu feature (`git checkout -b feature/nueva-funcionalidad`)
+2. Crea una rama desde `master` para tu feature (`git checkout -b feature/nueva-funcionalidad`)
 3. Realiza tus cambios y haz commit (`git commit -m 'feat: añade nueva funcionalidad'`)
 4. Push a la rama (`git push origin feature/nueva-funcionalidad`)
-5. Abre un Pull Request hacia `develop`
+5. Abre un Pull Request hacia `master`
 
 El pipeline de CI correrá tests unitarios + instrumentados (API 36) y, al mergear, publicará un nuevo release.
+
+### 🔒 Protección de `master`
+
+La rama `master` está protegida y solo recibe cambios vía Pull Request:
+
+- ✅ Pull request obligatorio antes de mergear
+- ✅ 1 aprobación de code review
+- ✅ Revisión de **code owner** requerida (definido en [`.github/CODEOWNERS`](.github/CODEOWNERS))
+- ✅ Reviews stale se descartan ante nuevos pushes
+- ✅ Historial lineal (squash o rebase — no merge commits)
+- ✅ Force-push y borrado de rama deshabilitados
+- ✅ Conversaciones sin resolver bloquean el merge
+- ✅ Reglas aplicadas incluso a administradores (`enforce_admins: true`)
+
+Como `@LeandroLCD` es el único code owner, puede auto-aprobar sus propios PRs (GitHub lo solicita como revisor automáticamente y puede hacer click en "Approve" en su propio PR). Los PRs de cualquier otro contributor necesitan su revisión antes de mergear.
+
+La configuración exacta está versionada en [`.github/branch-protection/master.json`](.github/branch-protection/master.json) y puede re-aplicarse con:
+
+```bash
+gh api --method PUT \
+  repos/LeandroLCD/compose-components/branches/master/protection \
+  --input .github/branch-protection/master.json
+```
 
 ---
 

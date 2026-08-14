@@ -1,0 +1,313 @@
+name: 🧪 CI — PR to Master
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Continuous Integration for PRs targeting master.
+#
+# Runs on every PR open / synchronize. Cancels previous runs on the same PR
+# (different pushes) but never cancels on close since that's the release path.
+# ─────────────────────────────────────────────────────────────────────────────
+on:
+  pull_request:
+    branches:
+      - master
+    types: [opened, synchronize]
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event.action != 'closed' }}
+
+# ─────────────────────────────────────────────────────────────────────────────
+# JOBS
+#   1. check-version — extract version from build.gradle.kts, compare with
+#                      latest tag, fail fast if the version isn't bumped.
+#   2. unit-tests    — JVM unit tests for :component.
+#   3. android-tests — instrumented Compose UI tests on API 36 emulator.
+# ─────────────────────────────────────────────────────────────────────────────
+jobs:
+
+  # ─────────────────────────────────────────────────────────────────────────
+  # STEP 1 — Verify Version Bump
+  # Fails the PR if the version in build.gradle.kts is not strictly greater
+  # than the latest git tag, or if the target tag already exists on origin.
+  # ─────────────────────────────────────────────────────────────────────────
+  check-version:
+    name: 🏷️ Step 1 — Verify Version Bump
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    permissions:
+      contents: read
+
+    outputs:
+      version:    ${{ steps.extract-version.outputs.version }}
+      tag_name:   ${{ steps.extract-version.outputs.tag_name }}
+      latest_tag: ${{ steps.validate-version.outputs.latest_tag }}
+
+    steps:
+      - name: 📥 Checkout code
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - name: 📌 Extract version from build.gradle.kts
+        id: extract-version
+        run: |
+          VERSION=$(grep -oP 'version\s*=\s*"\K[^"]+' build.gradle.kts 2>/dev/null | head -1 || true)
+
+          if [ -z "$VERSION" ]; then
+            echo "❌ No se encontró 'version = \"...\"' en build.gradle.kts"
+            exit 1
+          fi
+
+          TAG_NAME="v${VERSION}"
+          echo "version=${VERSION}"   >> $GITHUB_OUTPUT
+          echo "tag_name=${TAG_NAME}" >> $GITHUB_OUTPUT
+          echo "📌 Versión en Gradle: ${VERSION}  →  Tag a crear: ${TAG_NAME}"
+
+      - name: "🔍 Validate: new tag > latest tag & no duplicate"
+        id: validate-version
+        run: |
+          NEW_VERSION="${{ steps.extract-version.outputs.version }}"
+          NEW_TAG="${{ steps.extract-version.outputs.tag_name }}"
+
+          semver_gt() {
+            local A="${1#v}" B="${2#v}"
+            local IFS=.
+            read -ra VA <<< "$A"
+            read -ra VB <<< "$B"
+            for i in 0 1 2; do
+              local a="${VA[$i]:-0}" b="${VB[$i]:-0}"
+              if   (( 10#$a > 10#$b )); then return 0
+              elif (( 10#$a < 10#$b )); then return 1
+              fi
+            done
+            return 1
+          }
+
+          LATEST_TAG=$(git tag -l 'v*' | sort -V | tail -1)
+
+          if [ -z "$LATEST_TAG" ]; then
+            echo "ℹ️  No hay tags previos en el repo. Primer release: ${NEW_TAG}"
+            echo "latest_tag=ninguno" >> $GITHUB_OUTPUT
+            echo "✅ Validación superada — primer release."
+            exit 0
+          fi
+
+          echo "latest_tag=${LATEST_TAG}" >> $GITHUB_OUTPUT
+          echo "🏷️  Último tag existente : ${LATEST_TAG}"
+          echo "🆕 Nuevo tag a crear    : ${NEW_TAG}"
+
+          if git ls-remote --tags origin "refs/tags/${NEW_TAG}" | grep -q "${NEW_TAG}"; then
+            echo ""
+            echo "❌ ERROR: El tag ${NEW_TAG} ya existe en el repositorio."
+            echo "   Incrementa la versión en build.gradle.kts antes de mergear."
+            exit 1
+          fi
+
+          if semver_gt "$NEW_VERSION" "$LATEST_TAG"; then
+            echo ""
+            echo "✅ Validación superada: ${NEW_TAG} > ${LATEST_TAG}"
+          else
+            echo ""
+            echo "❌ ERROR: La versión ${NEW_VERSION} NO es mayor que el último tag ${LATEST_TAG}."
+            echo "   Incrementa la versión en build.gradle.kts antes de mergear."
+            exit 1
+          fi
+
+  # ─────────────────────────────────────────────────────────────────────────
+  # STEP 2 — Unit Tests (JVM)
+  # ─────────────────────────────────────────────────────────────────────────
+  unit-tests:
+    name: 🧪 Step 2 — Unit Tests (:component)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    permissions:
+      contents: read
+      checks: write
+      pull-requests: write
+
+    steps:
+      - name: 📥 Checkout code
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 1
+
+      - name: ☕ Set up JDK 17
+        uses: actions/setup-java@v5
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+          cache: gradle
+
+      - name: 📦 Restore Gradle cache (master-first)
+        id: gradle-cache
+        uses: actions/cache/restore@v6
+        with:
+          path: |
+            ~/.gradle/caches
+            ~/.gradle/wrapper
+          key: gradle-${{ runner.os }}-${{ github.ref_name }}-${{ hashFiles('**/*.gradle*', '**/gradle-wrapper.properties', '**/gradle/libs.versions.toml') }}
+          restore-keys: |
+            gradle-${{ runner.os }}-master-
+            gradle-${{ runner.os }}-
+
+      - name: 💾 Save Gradle cache (only master / on miss)
+        if: github.ref_name == 'master' || steps.gradle-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v5
+        with:
+          path: |
+            ~/.gradle/caches
+            ~/.gradle/wrapper
+          key: ${{ steps.gradle-cache.outputs.cache-primary-key }}
+
+      - name: 🔧 Grant execute permission to gradlew
+        run: chmod +x ./gradlew
+
+      - name: 🧪 Run :component unit tests
+        id: run-tests
+        run: |
+          ./gradlew :component:testDebugUnitTest \
+            --no-daemon \
+            --warning-mode none \
+            --console=plain \
+            --stacktrace
+
+      - name: 📊 Publish unit test results
+        if: always()
+        uses: EnricoMi/publish-unit-test-result-action@v2
+        with:
+          files: component/build/test-results/**/*.xml
+          check_name: 📋 Unit Test Results — :component
+          comment_title: 🧪 Unit Test Report — :component module
+          comment_mode: always
+
+      - name: 📄 Upload test report on failure
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: unit-test-report-${{ github.run_number }}
+          path: component/build/reports/tests/
+          retention-days: 14
+          if-no-files-found: ignore
+
+  # ─────────────────────────────────────────────────────────────────────────
+  # STEP 3 — Instrumented Tests (API 36)
+  # ─────────────────────────────────────────────────────────────────────────
+  android-tests:
+    name: 🤖 Step 3 — Android Tests (API ${{ matrix.api-level }})
+    needs: [unit-tests]
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+
+    permissions:
+      contents: read
+      checks: write
+      pull-requests: write
+
+    strategy:
+      fail-fast: false
+      matrix:
+        api-level: [36]
+
+    steps:
+      - name: 🔧 Enable KVM group perms
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+
+      - name: 📥 Checkout code
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 1
+
+      - name: ☕ Set up JDK 17
+        uses: actions/setup-java@v5
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+
+      - name: 🐘 Restore Gradle cache (shared, master-first)
+        id: gradle-cache
+        uses: actions/cache/restore@v6
+        with:
+          path: |
+            ~/.gradle/caches
+            ~/.gradle/wrapper
+          key: ${{ runner.os }}-gradle-${{ github.ref_name }}-${{ hashFiles('**/*.gradle*', '**/gradle-wrapper.properties', '**/gradle/libs.versions.toml') }}
+          restore-keys: |
+            ${{ runner.os }}-gradle-master-
+            ${{ runner.os }}-gradle-
+
+      - name: 💾 Save Gradle cache (only master / on miss)
+        if: github.ref_name == 'master' || steps.gradle-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v5
+        with:
+          path: |
+            ~/.gradle/caches
+            ~/.gradle/wrapper
+          key: ${{ steps.gradle-cache.outputs.cache-primary-key }}
+
+      - name: 📱 Restore AVD cache (1 per API, master-first)
+        id: avd-cache
+        uses: actions/cache/restore@v6
+        with:
+          path: |
+            ~/.android/avd/*
+            ~/.android/adb*
+          key: avd-compose-components-${{ matrix.api-level }}-google_apis
+          restore-keys: |
+            avd-compose-components-${{ matrix.api-level }}-google_apis-master
+            avd-compose-components-${{ matrix.api-level }}-google_apis-
+
+      - name: 🏗️ Create AVD and generate snapshot for caching
+        if: steps.avd-cache.outputs.cache-hit != 'true'
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: ${{ matrix.api-level }}
+          arch: x86_64
+          target: google_apis
+          force-avd-creation: false
+          emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
+          disable-animations: false
+          emulator-boot-timeout: 300
+          script: echo "✅ AVD snapshot generated for caching (API ${{ matrix.api-level }})"
+
+      - name: 💾 Save AVD cache (only when newly created)
+        if: steps.avd-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v6
+        with:
+          path: |
+            ~/.android/avd/*
+            ~/.android/adb*
+          key: avd-compose-components-${{ matrix.api-level }}-google_apis
+
+      - name: 🧪 Run instrumented tests (API ${{ matrix.api-level }})
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: ${{ matrix.api-level }}
+          arch: x86_64
+          target: google_apis
+          force-avd-creation: false
+          emulator-options: -no-snapshot-save -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
+          disable-animations: true
+          script: ./gradlew :app:connectedDebugAndroidTest
+
+      - name: 📊 Publish instrumented test results
+        if: always()
+        uses: EnricoMi/publish-unit-test-result-action@v2
+        with:
+          files: '**/build/outputs/androidTest-results/**/*.xml'
+          check_name: 📋 Instrumented Results — API ${{ matrix.api-level }}
+          comment_title: 🤖 Instrumented Test Report (API ${{ matrix.api-level }})
+          comment_mode: always
+
+      - name: 📄 Upload HTML report
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: android-test-report-api${{ matrix.api-level }}-${{ github.run_number }}
+          path: '**/build/reports/androidTests/connected/'
+          retention-days: 30
+          if-no-files-found: ignore

@@ -1,14 +1,19 @@
-name: 🚀 Release Pipeline — PR to Develop
+name: 🚀 Release — Deploy from Master
 
 # ─────────────────────────────────────────────────────────────────────────────
-# TRIGGER
-# Corre en cada PR hacia develop y en el merge del mismo.
-# Los pasos 3-4-5 solo corren cuando el PR es mergeado.
+# Release pipeline. Triggers ONLY on PR close events against master.
+# Gates on the PR having been merged.
+#
+# Jobs:
+#   1. check-tag      — re-validate version (semver bump + no duplicate tag).
+#   2. build-release  — assemble :component release AAR and upload as artifact.
+#   3. create-release — create GitHub Release + tag and attach the AAR.
+#   4. jitpack-build  — wait for JitPack to index the tag and print the log.
 # ─────────────────────────────────────────────────────────────────────────────
 on:
   pull_request:
     branches:
-      - develop
+      - master
     types: [closed]
 
 concurrency:
@@ -17,211 +22,13 @@ concurrency:
 
 jobs:
 
-  # ───────────────────────────────────────────────────────────────────────────
-  # STEP 1A — Unit Tests (JVM)
-  # ───────────────────────────────────────────────────────────────────────────
-  unit-tests:
-    name: 🧪 Step 1A — Unit Tests (:component)
-    runs-on: ubuntu-latest
-    if: github.event.action != 'closed' || github.event.pull_request.merged == true
-    timeout-minutes: 30
-
-    permissions:
-      contents: read
-      checks: write
-      pull-requests: write
-
-    steps:
-      - name: 📥 Checkout code
-        uses: actions/checkout@v7
-        with:
-          fetch-depth: 1
-
-      - name: ☕ Set up JDK 17
-        uses: actions/setup-java@v5
-        with:
-          distribution: 'temurin'
-          java-version: '17'
-          cache: gradle
-
-      - name: 📦 Restore Gradle cache (develop-first)
-        id: gradle-cache
-        uses: actions/cache/restore@v6
-        with:
-          path: |
-            ~/.gradle/caches
-            ~/.gradle/wrapper
-          key: gradle-${{ runner.os }}-${{ github.ref_name }}-${{ hashFiles('**/*.gradle*', '**/gradle-wrapper.properties', '**/gradle/libs.versions.toml') }}
-          restore-keys: |
-            gradle-${{ runner.os }}-develop-
-            gradle-${{ runner.os }}-
-
-      - name: 💾 Save Gradle cache (only develop / on miss)
-        if: github.ref_name == 'develop' || steps.gradle-cache.outputs.cache-hit != 'true'
-        uses: actions/cache/save@v5
-        with:
-          path: |
-            ~/.gradle/caches
-            ~/.gradle/wrapper
-          key: ${{ steps.gradle-cache.outputs.cache-primary-key }}
-
-      - name: 🔧 Grant execute permission to gradlew
-        run: chmod +x ./gradlew
-
-      - name: 🧪 Run :component unit tests
-        id: run-tests
-        run: |
-          ./gradlew :component:testDebugUnitTest \
-            --no-daemon \
-            --warning-mode none \
-            --console=plain \
-            --stacktrace
-
-      - name: 📊 Publish unit test results
-        if: always()
-        uses: EnricoMi/publish-unit-test-result-action@v2
-        with:
-          files: component/build/test-results/**/*.xml
-          check_name: 📋 Unit Test Results — :component
-          comment_title: 🧪 Unit Test Report — :component module
-          comment_mode: always
-
-      - name: 📄 Upload test report on failure
-        if: failure()
-        uses: actions/upload-artifact@v7
-        with:
-          name: unit-test-report-${{ github.run_number }}
-          path: component/build/reports/tests/
-          retention-days: 14
-          if-no-files-found: ignore
-
-  # ───────────────────────────────────────────────────────────────────────────
-  # STEP 1B — Instrumented Tests (API 36 only)
-  # ───────────────────────────────────────────────────────────────────────────
-  android-tests:
-    name: 🤖 Android Tests (API ${{ matrix.api-level }})
-    needs: [unit-tests]
-    runs-on: ubuntu-latest
-    timeout-minutes: 60
-
-    permissions:
-      contents: read
-      checks: write
-      pull-requests: write
-
-    strategy:
-      fail-fast: false
-      matrix:
-        api-level: [36]
-
-    steps:
-      - name: 🔧 Enable KVM group perms
-        run: |
-          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
-          sudo udevadm control --reload-rules
-          sudo udevadm trigger --name-match=kvm
-
-      - name: 📥 Checkout code
-        uses: actions/checkout@v7
-        with:
-          fetch-depth: 1
-
-      - name: ☕ Set up JDK 17
-        uses: actions/setup-java@v5
-        with:
-          distribution: 'temurin'
-          java-version: '17'
-
-      - name: 🐘 Restore Gradle cache (shared, develop-first)
-        id: gradle-cache
-        uses: actions/cache/restore@v6
-        with:
-          path: |
-            ~/.gradle/caches
-            ~/.gradle/wrapper
-          key: ${{ runner.os }}-gradle-${{ github.ref_name }}-${{ hashFiles('**/*.gradle*', '**/gradle-wrapper.properties', '**/gradle/libs.versions.toml') }}
-          restore-keys: |
-            ${{ runner.os }}-gradle-develop-
-            ${{ runner.os }}-gradle-
-      - name: 💾 Save Gradle cache (only develop / on miss)
-        if: github.ref_name == 'develop' || steps.gradle-cache.outputs.cache-hit != 'true'
-        uses: actions/cache/save@v5
-        with:
-          path: |
-            ~/.gradle/caches
-            ~/.gradle/wrapper
-          key: ${{ steps.gradle-cache.outputs.cache-primary-key }}
-
-      - name: 📱 Restore AVD cache (1 per API, develop-first)
-        uses: actions/cache/restore@v6
-        id: avd-cache
-        with:
-          path: |
-            ~/.android/avd/*
-            ~/.android/adb*
-          key: avd-compose-components-${{ matrix.api-level }}-google_apis
-          restore-keys: |
-            avd-compose-components-${{ matrix.api-level }}-google_apis-develop
-            avd-compose-components-${{ matrix.api-level }}-google_apis-
-
-      - name: 🏗️ Create AVD and generate snapshot for caching
-        if: steps.avd-cache.outputs.cache-hit != 'true'
-        uses: reactivecircus/android-emulator-runner@v2
-        with:
-          api-level: ${{ matrix.api-level }}
-          arch: x86_64
-          target: google_apis
-          force-avd-creation: false
-          emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
-          disable-animations: false
-          emulator-boot-timeout: 300
-          script: echo "✅ AVD snapshot generated for caching (API ${{ matrix.api-level }})"
-
-      - name: 💾 Save AVD cache (only when newly created)
-        if: steps.avd-cache.outputs.cache-hit != 'true'
-        uses: actions/cache/save@v6
-        with:
-          path: |
-            ~/.android/avd/*
-            ~/.android/adb*
-          key: avd-compose-components-${{ matrix.api-level }}-google_apis
-
-      - name: 🧪 Run instrumented tests (API ${{ matrix.api-level }})
-        uses: reactivecircus/android-emulator-runner@v2
-        with:
-          api-level: ${{ matrix.api-level }}
-          arch: x86_64
-          target: google_apis
-          force-avd-creation: false
-          emulator-options: -no-snapshot-save -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
-          disable-animations: true
-          script: ./gradlew :app:connectedDebugAndroidTest
-
-      - name: 📊 Publish instrumented test results
-        if: always()
-        uses: EnricoMi/publish-unit-test-result-action@v2
-        with:
-          files: '**/build/outputs/androidTest-results/**/*.xml'
-          check_name: 📋 Instrumented Results — API ${{ matrix.api-level }}
-          comment_title: 🤖 Instrumented Test Report (API ${{ matrix.api-level }})
-          comment_mode: always
-
-      - name: 📄 Upload HTML report
-        if: failure()
-        uses: actions/upload-artifact@v7
-        with:
-          name: android-test-report-api${{ matrix.api-level }}-${{ github.run_number }}
-          path: '**/build/reports/androidTests/connected/'
-          retention-days: 30
-          if-no-files-found: ignore
-
-  # ───────────────────────────────────────────────────────────────────────────
-  # STEP 2 — Check Tag Availability & Version Bump
-  # ───────────────────────────────────────────────────────────────────────────
+  # ─────────────────────────────────────────────────────────────────────────
+  # STEP 1 — Check Tag Availability & Version Bump
+  # ─────────────────────────────────────────────────────────────────────────
   check-tag:
-    name: 🏷️ Step 2 — Check Tag & Version Bump
+    name: 🏷️ Step 1 — Check Tag & Version Bump
     runs-on: ubuntu-latest
-    if: github.event.action != 'closed' || github.event.pull_request.merged == true
+    if: github.event.pull_request.merged == true
     timeout-minutes: 10
 
     permissions:
@@ -289,7 +96,6 @@ jobs:
           if git ls-remote --tags origin "refs/tags/${NEW_TAG}" | grep -q "${NEW_TAG}"; then
             echo ""
             echo "❌ ERROR: El tag ${NEW_TAG} ya existe en el repositorio."
-            echo "   Incrementa la versión en build.gradle.kts antes de mergear."
             exit 1
           fi
 
@@ -302,13 +108,13 @@ jobs:
             exit 1
           fi
 
-  # ───────────────────────────────────────────────────────────────────────────
-  # STEP 3 — Build :component Release AAR
-  # ───────────────────────────────────────────────────────────────────────────
+  # ─────────────────────────────────────────────────────────────────────────
+  # STEP 2 — Build :component Release AAR
+  # ─────────────────────────────────────────────────────────────────────────
   build-release:
-    name: 🏗️ Step 3 — Build :component Release AAR
+    name: 🏗️ Step 2 — Build :component Release AAR
     runs-on: ubuntu-latest
-    needs: [unit-tests, android-tests, check-tag]
+    needs: [check-tag]
     if: github.event.pull_request.merged == true
     timeout-minutes: 30
 
@@ -328,7 +134,7 @@ jobs:
           java-version: '17'
           cache: gradle
 
-      - name: 📦 Restore Gradle cache (develop-first)
+      - name: 📦 Restore Gradle cache (master-first)
         id: gradle-cache
         uses: actions/cache/restore@v6
         with:
@@ -337,11 +143,11 @@ jobs:
             ~/.gradle/wrapper
           key: gradle-${{ runner.os }}-${{ github.ref_name }}-${{ hashFiles('**/*.gradle*', '**/gradle-wrapper.properties', '**/gradle/libs.versions.toml') }}
           restore-keys: |
-            gradle-${{ runner.os }}-develop-
+            gradle-${{ runner.os }}-master-
             gradle-${{ runner.os }}-
 
-      - name: 💾 Save Gradle cache (only develop / on miss)
-        if: github.ref_name == 'develop' || steps.gradle-cache.outputs.cache-hit != 'true'
+      - name: 💾 Save Gradle cache (only master / on miss)
+        if: github.ref_name == 'master' || steps.gradle-cache.outputs.cache-hit != 'true'
         uses: actions/cache/save@v5
         with:
           path: |
@@ -379,11 +185,11 @@ jobs:
           retention-days: 7
           if-no-files-found: error
 
-  # ───────────────────────────────────────────────────────────────────────────
-  # STEP 4 — Create Tag & GitHub Release
-  # ───────────────────────────────────────────────────────────────────────────
+  # ─────────────────────────────────────────────────────────────────────────
+  # STEP 3 — Create Tag & GitHub Release
+  # ─────────────────────────────────────────────────────────────────────────
   create-release:
-    name: 🎯 Step 4 — Create Tag & GitHub Release
+    name: 🎯 Step 3 — Create Tag & GitHub Release
     runs-on: ubuntu-latest
     needs: [build-release, check-tag]
     if: github.event.pull_request.merged == true
@@ -445,11 +251,11 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-  # ───────────────────────────────────────────────────────────────────────────
-  # STEP 5 — JitPack Build Log
-  # ───────────────────────────────────────────────────────────────────────────
+  # ─────────────────────────────────────────────────────────────────────────
+  # STEP 4 — JitPack Build Log
+  # ─────────────────────────────────────────────────────────────────────────
   jitpack-build:
-    name: 📡 Step 5 — JitPack Build Log
+    name: 📡 Step 4 — JitPack Build Log
     runs-on: ubuntu-latest
     needs: [create-release, check-tag]
     if: github.event.pull_request.merged == true
@@ -521,14 +327,14 @@ jobs:
           curl -s --max-time 30 "${LOG_URL}" || echo "⚠️  No se pudo obtener el log aún. URL: ${LOG_URL}"
           echo "════════════════════════════════════════"
 
-  # ───────────────────────────────────────────────────────────────────────────
+  # ─────────────────────────────────────────────────────────────────────────
   # PR ANNOTATION — Resumen del pipeline como comentario en el PR
-  # ───────────────────────────────────────────────────────────────────────────
+  # ─────────────────────────────────────────────────────────────────────────
   pr-summary:
     name: 📝 PR Summary Annotation
     runs-on: ubuntu-latest
-    needs: [unit-tests, android-tests, check-tag, build-release, create-release, jitpack-build]
-    if: always() && (github.event.action != 'closed' || github.event.pull_request.merged == true)
+    needs: [check-tag, build-release, create-release, jitpack-build]
+    if: always() && github.event.pull_request.merged == true
     timeout-minutes: 5
 
     permissions:
@@ -544,7 +350,6 @@ jobs:
               success: '✅', failure: '❌', skipped: '⏭️', cancelled: '🚫'
             }[r] ?? '⚠️');
 
-            const isMerged   = ${{ github.event.pull_request.merged == true }};
             const version    = `${{ needs.check-tag.outputs.version }}`;
             const tagName    = `${{ needs.check-tag.outputs.tag_name }}`;
             const latestTag  = `${{ needs.check-tag.outputs.latest_tag }}`;
@@ -552,30 +357,20 @@ jobs:
             const jitpackStatus = `${{ needs.jitpack-build.outputs.jitpack_status }}`;
             const jitpackLog    = `${{ needs.jitpack-build.outputs.jitpack_log_url }}`;
 
-            const r1 = `${{ needs.unit-tests.result }}`;
-            const r2 = `${{ needs.android-tests.result }}`;
-            const r3 = `${{ needs.check-tag.result }}`;
-            const r4 = `${{ needs.build-release.result }}`;
-            const r5 = `${{ needs.create-release.result }}`;
-            const r6 = `${{ needs.jitpack-build.result }}`;
+            const r1 = `${{ needs.check-tag.result }}`;
+            const r2 = `${{ needs.build-release.result }}`;
+            const r3 = `${{ needs.create-release.result }}`;
+            const r4 = `${{ needs.jitpack-build.result }}`;
 
-            const mergeRow = isMerged
-              ? '✅ **Mergeado** — pipeline completo ejecutado'
-              : '⏳ **Pendiente de merge** — solo validaciones previas';
-
-            const releaseLink = releaseUrl
-              ? `[Ver GitHub Release](${releaseUrl})`
-              : '—';
-
+            const releaseLink = releaseUrl ? `[Ver GitHub Release](${releaseUrl})` : '—';
             const jitpackRow = jitpackLog
               ? `[📄 Build Log](${jitpackLog}) · Status: \`${jitpackStatus}\``
               : '—';
-
             const versionArrow = (latestTag && latestTag !== 'ninguno' && tagName)
               ? `\`${latestTag}\` → \`${tagName}\``
               : tagName ? `primer release: \`${tagName}\`` : 'N/A';
 
-            const depBlock = isMerged && version ? `
+            const depBlock = version ? `
             ### 📥 Dependency (JitPack)
             \`\`\`kotlin
             // settings.gradle.kts
@@ -585,24 +380,16 @@ jobs:
             implementation("com.github.LeandroLCD:compose-components:${version}")
             \`\`\`` : '';
 
-            const warningBlock = (!isMerged && (r1 === 'failure' || r2 === 'failure' || r3 === 'failure'))
-              ? `\n> ⚠️ **Hay errores de validación.** Corrígelos antes de mergear.\n`
-              : '';
-
             const body = `## 🚀 Release Pipeline — Resumen
 
-            ${warningBlock}
             | # | Paso | Estado | Detalle |
             |---|------|--------|---------|
-            | 1️⃣ | Unit Tests | ${icon(r1)} \`${r1}\` | Tests unitarios del módulo \`:component\` |
-            | 2️⃣ | Android Tests (API 36) | ${icon(r2)} \`${r2}\` | \`./gradlew :app:connectedDebugAndroidTest\` |
-            | 3️⃣ | Check Tag & Bump | ${icon(r3)} \`${r3}\` | ${versionArrow} |
-            | 4️⃣ | Build Release AAR | ${icon(r4)} \`${r4}\` | \`./gradlew :component:assembleRelease\` |
-            | 5️⃣ | GitHub Release | ${icon(r5)} \`${r5}\` | Tag \`${tagName || 'N/A'}\` + AAR · ${releaseLink} |
-            | 6️⃣ | JitPack Build | ${icon(r6)} \`${r6}\` | ${jitpackRow} |
+            | 1️⃣ | Check Tag & Bump | ${icon(r1)} \`${r1}\` | ${versionArrow} |
+            | 2️⃣ | Build Release AAR | ${icon(r2)} \`${r2}\` | \`./gradlew :component:assembleRelease\` |
+            | 3️⃣ | GitHub Release | ${icon(r3)} \`${r3}\` | Tag \`${tagName || 'N/A'}\` + AAR · ${releaseLink} |
+            | 4️⃣ | JitPack Build | ${icon(r4)} \`${r4}\` | ${jitpackRow} |
 
             **📌 Versión nueva:** \`${version || 'no detectada'}\` &nbsp;·&nbsp; **🏷️ Último tag:** \`${latestTag || '—'}\`
-            **🔀 Estado:** ${mergeRow}
             ${depBlock}
 
             ---
