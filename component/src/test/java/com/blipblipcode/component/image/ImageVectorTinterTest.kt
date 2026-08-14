@@ -1,3 +1,5 @@
+@file:Suppress("KDocUnresolvedReference")
+
 package com.blipblipcode.component.image
 
 import androidx.compose.ui.graphics.Color
