@@ -132,28 +132,23 @@ jobs:
         with:
           distribution: 'temurin'
           java-version: '17'
-          cache: gradle
 
-      - name: 📦 Restore Gradle cache (master-first)
-        id: gradle-cache
+      - name: 📦 Restore Gradle cache
         uses: actions/cache/restore@v6
         with:
           path: |
             ~/.gradle/caches
             ~/.gradle/wrapper
-          key: gradle-${{ runner.os }}-${{ github.ref_name }}-${{ hashFiles('**/*.gradle*', '**/gradle-wrapper.properties', '**/gradle/libs.versions.toml') }}
-          restore-keys: |
-            gradle-${{ runner.os }}-master-
-            gradle-${{ runner.os }}-
+          key: setup-java-${{ runner.os }}-gradle
 
-      - name: 💾 Save Gradle cache (only master / on miss)
-        if: github.ref_name == 'master' || steps.gradle-cache.outputs.cache-hit != 'true'
+      - name: 💾 Save Gradle cache
+        if: success()
         uses: actions/cache/save@v5
         with:
           path: |
             ~/.gradle/caches
             ~/.gradle/wrapper
-          key: ${{ steps.gradle-cache.outputs.cache-primary-key }}
+          key: setup-java-${{ runner.os }}-gradle
 
       - name: 🔧 Grant execute permission to gradlew
         run: chmod +x ./gradlew
@@ -521,6 +516,7 @@ jobs:
             --arg run_url "$RUN_URL" \
             --argjson color "$COLOR" \
             --arg status "$STATUS" \
+            --arg branch "$BRANCH" \
             --arg short_sha "$SHORT_SHA" \
             --arg author "$AUTHOR" \
             --arg event "$EVENT" \
