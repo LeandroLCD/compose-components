@@ -516,6 +516,7 @@ jobs:
             --arg run_url "$RUN_URL" \
             --argjson color "$COLOR" \
             --arg status "$STATUS" \
+            --arg branch "$BRANCH" \
             --arg short_sha "$SHORT_SHA" \
             --arg author "$AUTHOR" \
             --arg event "$EVENT" \
