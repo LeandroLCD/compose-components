@@ -295,6 +295,28 @@ composecomponents/
 
 ## 🚀 Instalación
 
+### Desde JitPack (release publicado)
+
+Agrega el repositorio de JitPack en tu `settings.gradle.kts`:
+
+```kotlin
+dependencyResolutionManagement {
+    repositories {
+        maven { url = uri("https://jitpack.io") }
+    }
+}
+```
+
+Y luego la dependencia en el módulo de tu app:
+
+```kotlin
+dependencies {
+    implementation("com.github.LeandroLCD:compose-components:<TAG>")
+}
+```
+
+Los tags se publican automáticamente al mergear un PR a `develop` (ver pipeline en `.github/workflows/release-pipeline.yml`).
+
 ### Proyecto local
 
 Incluye el módulo `:component` en tus dependencias de Gradle:

@@ -49,7 +49,7 @@ publishing {
     publications {
         create<MavenPublication>("release") {
             groupId = "com.github.LeandroLCD"
-            artifactId = "query"
+            artifactId = "compose-components"
             version = project.version.toString()
         }
     }
