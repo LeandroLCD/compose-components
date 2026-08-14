@@ -126,6 +126,124 @@ RangeSliderComponent(
 
 ---
 
+### 4. Icon (con `tintCap`)
+
+Wrapper sobre `androidx.compose.material3.Icon` que añade el parámetro `tintCap` para controlar qué capas (layers) de un `ImageVector` reciben el color de `tint`. Las capas no afectadas conservan sus colores originales.
+
+**Propiedades personalizables:**
+| Propiedad | Tipo | Descripción |
+|-----------|------|-------------|
+| `imageVector` | `ImageVector` | Vector a renderizar |
+| `contentDescription` | `String?` | Descripción para accesibilidad |
+| `modifier` | `Modifier` | Modificador estándar |
+| `tint` | `Color` | Color a aplicar (por defecto `LocalContentColor.current`) |
+| `tintCap` | `TintCap` | Alcance del tint (ver tabla abajo, por defecto `TintCap.All`) |
+
+**Variantes de `TintCap`:**
+| Variante | Descripción |
+|----------|-------------|
+| `TintCap.All` | Pinta **todas** las capas con `tint` (default para `Icon`, equivale al comportamiento estándar de Compose) |
+| `TintCap.Undefined` | **No aplica** ninguna transformación; el vector se renderiza con sus colores originales |
+| `TintCap.index(n)` | Pinta **solo** la capa top-level en el índice `n` |
+| `TintCap.range(rango)` | Pinta **todas** las capas cuyo índice esté dentro de `rango` (ej: `0..2`) |
+| `TintCap.layers(1, 3)` | Pinta **solo** las capas top-level en los índices indicados |
+
+> Una "capa" es cada nodo de primer nivel del `ImageVector` raíz (ya sea un `VectorGroup` o un `VectorPath` directo). Si la capa es un grupo, todo su contenido se pinta con el mismo criterio.
+
+**Ejemplos de uso:**
+
+```kotlin
+// Default: pinta todas las capas
+Icon(
+    imageVector = Icons.Filled.Favorite,
+    contentDescription = null,
+    tint = Color.Red
+)
+
+// Pinta solo la capa top-level en el índice 1
+Icon(
+    imageVector = Icons.Filled.Favorite,
+    contentDescription = null,
+    tint = Color.Red,
+    tintCap = TintCap.index(1)
+)
+
+// Pinta el rango 0..2 y respeta el resto
+Icon(
+    imageVector = Icons.Filled.Favorite,
+    contentDescription = null,
+    tint = Color.Red,
+    tintCap = TintCap.range(0..2)
+)
+
+// Pinta múltiples capas específicas
+Icon(
+    imageVector = Icons.Filled.Favorite,
+    contentDescription = null,
+    tint = Color.Red,
+    tintCap = TintCap.layers(1, 3)
+)
+
+// Respeta los colores originales del vector ignorando tint
+Icon(
+    imageVector = Icons.Filled.Favorite,
+    contentDescription = null,
+    tint = Color.Red, // se ignora por estar Undefined
+    tintCap = TintCap.Undefined
+)
+```
+
+---
+
+### 5. Image (con `tintCap`)
+
+Wrapper sobre `androidx.compose.foundation.Image` con la misma potencia de `tintCap` que `Icon`. Pensado para vectores con varias capas donde queremos preservar colores originales (logos, ilustraciones, etc.).
+
+**Propiedades personalizables:**
+| Propiedad | Tipo | Descripción |
+|-----------|------|-------------|
+| `imageVector` | `ImageVector` | Vector a renderizar |
+| `contentDescription` | `String?` | Descripción para accesibilidad |
+| `modifier` | `Modifier` | Modificador estándar |
+| `alignment` | `Alignment` | Alineación dentro del espacio disponible |
+| `contentScale` | `ContentScale` | Estrategia de escalado (default `ContentScale.Fit`) |
+| `alpha` | `Float` | Opacidad (default `DefaultAlpha`) |
+| `colorFilter` | `ColorFilter?` | Filtro de color opcional adicional |
+| `tint` | `Color?` | Color a aplicar (opcional) |
+| `tintCap` | `TintCap` | Alcance del tint (default `TintCap.Undefined`) |
+
+**Ejemplo de uso:**
+
+```kotlin
+// Logo con fondo original y un solo trazo tintado
+Image(
+    imageVector = myBrandLogo,
+    contentDescription = "Logo",
+    modifier = Modifier.size(120.dp),
+    tint = MaterialTheme.colorScheme.primary,
+    tintCap = TintCap.index(0)
+)
+
+// Todas las capas pintadas con tint
+Image(
+    imageVector = myBrandLogo,
+    contentDescription = "Logo",
+    modifier = Modifier.size(120.dp),
+    tint = MaterialTheme.colorScheme.primary,
+    tintCap = TintCap.All
+)
+
+// Colores originales del vector intactos (sin transformación)
+Image(
+    imageVector = myBrandLogo,
+    contentDescription = "Logo",
+    modifier = Modifier.size(120.dp),
+    tintCap = TintCap.Undefined
+)
+```
+
+---
+
 ## 🎨 Sistema de Colores
 
 Todos los componentes utilizan `SliderColorsDefaults` para una gestión coherente de colores:
@@ -161,9 +279,14 @@ composecomponents/
 │       │   └── SliderSizeDefaults.kt
 │       ├── linear/               # LinearProgressIndicatorComponents
 │       │   └── LinearProgressIndicatorComponents.kt
-│       └── range/                # RangeSliderComponent
-│           ├── RangeSliderComponent.kt
-│           └── RangeSliderDefaults.kt
+│       ├── range/                # RangeSliderComponent
+│       │   ├── RangeSliderComponent.kt
+│       │   └── RangeSliderDefaults.kt
+│       └── image/                # Icon e Image con tintCap
+│           ├── TintCap.kt
+│           ├── ImageVectorTinter.kt
+│           ├── Icon.kt
+│           └── Image.kt
 └── gradle/
     └── libs.versions.toml        # Catálogo de versiones
 ```
