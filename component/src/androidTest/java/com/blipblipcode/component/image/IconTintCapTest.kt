@@ -20,11 +20,12 @@ import org.junit.Test
 /**
  * Instrumented UI tests for [Icon] with the various [TintCap] variants, using the
  * [Icons.MapTruck] fixture which contains 4 distinct top-level layers:
- *   0 → `wheels` (group), 1 → `body`, 2 → `cab`, 3 → `cargo`.
+ *   0 → `wheels` (group), 1 → `body`, 2 → `cab` (cabin + window), 3 → `cargo`.
  *
  * Each test renders the truck inside an [Icon] with a specific [TintCap], captures the
- * resulting bitmap, and samples well-known pixel coordinates to verify that only the layers
- * targeted by [tintCap] receive the tint colour while the rest keep their original colour.
+ * resulting bitmap of a fixed-size [Box] that wraps the [Icon], and samples well-known
+ * pixel coordinates to verify that only the layers targeted by [tintCap] receive the tint
+ * colour while the rest keep their original colour.
  */
 class IconTintCapTest {
 
@@ -46,20 +47,23 @@ class IconTintCapTest {
 
     /**
      * Samples the rendered icon at the centre of every layer. Returns an `IntArray` of
-     * length 4 ordered as: [wheels, body, cab, cargo]. Coordinates are expressed in the
-     * rendered pixel buffer; with [iconSizeDp] = 128.dp and a 64x64 viewport, the scale is
-     * exactly 2 px per unit so positions match the source coords * 2.
+     * length 4 ordered as: [wheels, body, cab, cargo]. Coordinates are expressed as a
+     * fraction of the rendered pixel buffer; with [iconSizeDp] = 128.dp and a 64x64
+     * viewport, positions match the source coords * 2.
      */
     private fun renderAndSample(cap: TintCap): IntArray {
         composeTestRule.setContent {
             Surface(modifier = Modifier.background(Color.White)) {
                 Box(
-                    modifier = Modifier.size(iconSizeDp).background(Color.White)
+                    modifier = Modifier
+                        .size(iconSizeDp)
+                        .background(Color.White)
+                        .testTag(testTagValue)
                 ) {
                     Icon(
                         imageVector = Icons.MapTruck,
                         contentDescription = null,
-                        modifier = Modifier.size(iconSizeDp).testTag(testTagValue),
+                        modifier = Modifier.size(iconSizeDp),
                         tint = tintColor,
                         tintCap = cap
                     )
@@ -71,10 +75,10 @@ class IconTintCapTest {
         val w = bmp.width
         val h = bmp.height
         return intArrayOf(
-            bmp.getPixel(w * 14 / 64, h * 50 / 64),  // front tire (wheels group)
-            bmp.getPixel(w * 22 / 64, h * 48 / 64),  // body
-            bmp.getPixel(w * 50 / 64, h * 38 / 64),  // cab
-            bmp.getPixel(w * 22 / 64, h * 30 / 64)   // cargo
+            bmp.getPixel(w * 12 / 64, h * 54 / 64),  // front tire (wheels group)
+            bmp.getPixel(w * 32 / 64, h * 46 / 64),  // body chassis strip
+            bmp.getPixel(w * 52 / 64, h * 32 / 64),  // cab shell (below window)
+            bmp.getPixel(w * 20 / 64, h * 20 / 64)   // cargo box
         )
     }
 

@@ -1,12 +1,32 @@
 # Compose Components
 
-[![Kotlin](https://img.shields.io/badge/Kotlin-2.3.0-purple.svg)](https://kotlinlang.org/)
-[![Compose BOM](https://img.shields.io/badge/Compose%20BOM-2025.12.01-green.svg)](https://developer.android.com/jetpack/compose)
+[![Kotlin](https://img.shields.io/badge/Kotlin-2.3.10-purple.svg)](https://kotlinlang.org/)
+[![Compose BOM](https://img.shields.io/badge/Compose%20BOM-2026.02.00-green.svg)](https://developer.android.com/jetpack/compose)
 [![Material 3](https://img.shields.io/badge/Material%203-Ready-blue.svg)](https://m3.material.io/)
 [![API](https://img.shields.io/badge/API-24%2B-brightgreen.svg)](https://android-arsenal.com/api?level=24)
+[![CI](https://img.shields.io/badge/CI-Release%20Pipeline-blueviolet.svg)](.github/workflows/release-pipeline.yml)
 [![License](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
-Una librería de componentes de UI altamente personalizables para **Jetpack Compose**, construida sobre **Material 3**. Ofrece opciones de personalización avanzadas (tamaños, colores, formas) que van más allá de las configuraciones estándar de Material 3.
+Una librería de componentes de UI altamente personalizables para **Jetpack Compose**, construida sobre **Material 3**. Ofrece opciones de personalización avanzadas (tamaños, colores, formas, **tint selectivo por capa**) que van más allá de las configuraciones estándar de Material 3.
+
+---
+
+## 📋 Tabla de Contenidos
+
+- [✨ Características](#-características)
+- [📦 Componentes Disponibles](#-componentes-disponibles)
+  - [SliderComponent](#1-slidercomponent)
+  - [LinearProgressIndicatorComponents](#2-linearprogressindicatorcomponents)
+  - [RangeSliderComponent](#3-rangeslidercomponent)
+  - [Icon (con `tintCap`)](#4-icon-con-tintcap)
+  - [Image (con `tintCap`)](#5-image-con-tintcap)
+- [🎨 Sistema de Colores](#-sistema-de-colores)
+- [🧪 Tests](#-tests)
+- [📁 Estructura del Proyecto](#-estructura-del-proyecto)
+- [🚀 Instalación](#-instalación)
+- [📋 Requisitos](#-requisitos)
+- [🤝 Contribuciones](#-contribuciones)
+- [📄 Licencia](#-licencia)
 
 ---
 
@@ -15,7 +35,10 @@ Una librería de componentes de UI altamente personalizables para **Jetpack Comp
 - 🎨 **Personalización avanzada**: Control total sobre colores, tamaños y formas
 - 🧩 **Basado en Material 3**: Integración nativa con el sistema de diseño de Material
 - ⚡ **Fácil de usar**: API intuitiva y compatible con los componentes existentes
+- 🖌️ **Tinte selectivo por capa (`tintCap`)**: Pinta solo las capas que quieras de un `ImageVector` y preserva el resto
+- 🧪 **Cubierto por tests**: Suite de tests unitarios (JVM) e instrumentados (Compose UI tests)
 - 📱 **Compatible con API 24+**: Soporte para una amplia gama de dispositivos
+- 🚀 **Release automatizado**: Pipeline de CI que publica AAR + release + JitPack al mergear a `develop`
 
 ---
 
@@ -130,6 +153,8 @@ RangeSliderComponent(
 
 Wrapper sobre `androidx.compose.material3.Icon` que añade el parámetro `tintCap` para controlar qué capas (layers) de un `ImageVector` reciben el color de `tint`. Las capas no afectadas conservan sus colores originales.
 
+> 💡 **¿Por qué?** Cuando tiñes un `ImageVector` complejo (logos, ilustraciones, íconos con partes de marca) normalmente **todo** el vector se vuelve del color del `tint`. Con `tintCap` puedes pintar **solo** las capas que sí deben cambiar de color y dejar intactas las que representan la identidad visual (p.ej. el fondo o un detalle de marca).
+
 **Propiedades personalizables:**
 | Propiedad | Tipo | Descripción |
 |-----------|------|-------------|
@@ -190,6 +215,28 @@ Icon(
     contentDescription = null,
     tint = Color.Red, // se ignora por estar Undefined
     tintCap = TintCap.Undefined
+)
+```
+
+#### Fixture incluido: `Icons.MapTruck`
+
+El módulo incluye un `ImageVector` de camión multi-capa pensado para ejercitar `tintCap`:
+
+```
+Índice 0 → wheels (grupo con 2 neumáticos)   #424242
+Índice 1 → body   (cama del camión)          #E53935
+Índice 2 → cab    (cabina + ventana)         #1E88E5
+Índice 3 → cargo  (caja de carga)            #43A047
+```
+
+Úsalo para prototipar y validar el comportamiento de `tintCap` sin necesidad de un asset externo:
+
+```kotlin
+Icon(
+    imageVector = Icons.MapTruck,
+    contentDescription = "Truck",
+    tint = Color.Yellow,
+    tintCap = TintCap.layers(0, 3)  // solo neumáticos y carga en amarillo
 )
 ```
 
@@ -265,30 +312,71 @@ SliderColorsDefaults(
 
 ---
 
+## 🧪 Tests
+
+Cada componente está cubierto por tests. Para ejecutarlos:
+
+```bash
+# Tests unitarios (JVM) — rápidos, no requieren emulador
+./gradlew :component:testDebugUnitTest
+
+# Tests instrumentados (Compose UI tests) — requieren emulador o dispositivo
+./gradlew :app:connectedDebugAndroidTest
+```
+
+**Cobertura:**
+
+| Componente | Unit tests | Instrumented UI tests |
+|------------|:----------:|:---------------------:|
+| `SliderComponent` | — | — |
+| `LinearProgressIndicatorComponents` | — | — |
+| `RangeSliderComponent` | — | — |
+| `TintCap` | ✅ 9 tests | ✅ vía `Icon` / `Image` |
+| `ImageVectorTinter` | ✅ 7 tests | ✅ vía `Icon` / `Image` |
+| `Icon` (con `tintCap`) | — | ✅ 6 tests |
+| `Image` (con `tintCap`) | — | ✅ 5 tests |
+
+Los UI tests renderizan el fixture `Icons.MapTruck` (4 capas top-level con colores distinguibles) y muestrean píxeles del bitmap capturado para verificar que cada variante de `tintCap` pinta exactamente las capas correctas.
+
+---
+
 ## 📁 Estructura del Proyecto
 
 ```
 composecomponents/
-├── app/                          # Aplicación de demostración
-├── component/                    # Módulo de la librería
+├── app/                                          # Aplicación de demostración
+│   └── src/main/java/com/blipblipcode/compose_components/
+│       └── MainActivity.kt                       # Incluye el fixture Icons.MapTruck
+├── component/                                    # Módulo de la librería
 │   └── src/main/java/com/blipblipcode/component/
-│       ├── slider/               # SliderComponent y utilidades
+│       ├── slider/                               # SliderComponent y utilidades
 │       │   ├── SliderComponent.kt
 │       │   ├── SliderDefaults.kt
 │       │   ├── SliderColorsDefaults.kt
 │       │   └── SliderSizeDefaults.kt
-│       ├── linear/               # LinearProgressIndicatorComponents
+│       ├── linear/                               # LinearProgressIndicatorComponents
 │       │   └── LinearProgressIndicatorComponents.kt
-│       ├── range/                # RangeSliderComponent
+│       ├── range/                                # RangeSliderComponent
 │       │   ├── RangeSliderComponent.kt
 │       │   └── RangeSliderDefaults.kt
-│       └── image/                # Icon e Image con tintCap
-│           ├── TintCap.kt
-│           ├── ImageVectorTinter.kt
-│           ├── Icon.kt
-│           └── Image.kt
+│       └── image/                                # Icon e Image con tintCap
+│           ├── TintCap.kt                        # Sealed class (All / Undefined / Index / Range / Layers)
+│           ├── ImageVectorTinter.kt              # Lógica interna de re-tintado selectivo
+│           ├── Icon.kt                           # Wrapper de Material3 Icon
+│           ├── Image.kt                          # Wrapper de Foundation Image
+│           └── MapTruck.kt                       # Fixture ImageVector de 4 capas
+│   └── src/test/                                 # Tests unitarios (JVM)
+│       └── java/com/blipblipcode/component/image/
+│           ├── TintCapTest.kt                    # 9 tests
+│           └── ImageVectorTinterTest.kt          # 7 tests
+│   └── src/androidTest/                          # Tests instrumentados (Compose UI)
+│       └── java/com/blipblipcode/component/image/
+│           ├── IconTintCapTest.kt                # 6 tests
+│           └── ImageTintCapTest.kt               # 5 tests
+├── .github/workflows/
+│   └── release-pipeline.yml                      # CI: tests + build AAR + release + JitPack
 └── gradle/
-    └── libs.versions.toml        # Catálogo de versiones
+    └── libs.versions.toml                        # Catálogo de versiones
 ```
 
 ---
@@ -296,6 +384,8 @@ composecomponents/
 ## 🚀 Instalación
 
 ### Desde JitPack (release publicado)
+
+Cada merge a `develop` publica automáticamente un nuevo tag + AAR en GitHub Releases y dispara una build en JitPack.
 
 Agrega el repositorio de JitPack en tu `settings.gradle.kts`:
 
@@ -315,7 +405,9 @@ dependencies {
 }
 ```
 
-Los tags se publican automáticamente al mergear un PR a `develop` (ver pipeline en `.github/workflows/release-pipeline.yml`).
+Reemplaza `<TAG>` por el tag publicado (ej: `v0.1.0`). Los tags y el changelog están en la pestaña [Releases](../../releases) del repositorio.
+
+> ⚠️ La primera vez que importes el tag, JitPack necesita compilar el módulo; puede tardar unos minutos. Builds subsiguientes son instantáneas.
 
 ### Proyecto local
 
@@ -346,11 +438,12 @@ android {
 | Requisito | Versión mínima |
 |-----------|----------------|
 | Android Studio | Ladybug o superior |
-| Kotlin | 2.3.0+ |
-| Compose BOM | 2025.12.01+ |
+| Kotlin | 2.3.10+ |
+| Compose BOM | 2026.02.00+ |
 | Min SDK | 24 (Android 7.0) |
 | Target SDK | 36 |
 | JVM Target | 17 |
+| AGP | 9.0.0+ |
 
 ---
 
@@ -359,10 +452,12 @@ android {
 ¡Las contribuciones son bienvenidas! Si deseas contribuir:
 
 1. Haz un Fork del proyecto
-2. Crea una rama para tu feature (`git checkout -b feature/nueva-funcionalidad`)
-3. Realiza tus cambios y haz commit (`git commit -m 'Añade nueva funcionalidad'`)
+2. Crea una rama desde `develop` para tu feature (`git checkout -b feature/nueva-funcionalidad`)
+3. Realiza tus cambios y haz commit (`git commit -m 'feat: añade nueva funcionalidad'`)
 4. Push a la rama (`git push origin feature/nueva-funcionalidad`)
-5. Abre un Pull Request
+5. Abre un Pull Request hacia `develop`
+
+El pipeline de CI correrá tests unitarios + instrumentados (API 36) y, al mergear, publicará un nuevo release.
 
 ---
 

@@ -40,12 +40,15 @@ class ImageTintCapTest {
     private fun renderAndSample(cap: TintCap): IntArray {
         composeTestRule.setContent {
             Box(
-                modifier = Modifier.size(imageSizeDp).background(Color.White)
+                modifier = Modifier
+                    .size(imageSizeDp)
+                    .background(Color.White)
+                    .testTag(testTagValue)
             ) {
                 Image(
                     imageVector = Icons.MapTruck,
                     contentDescription = null,
-                    modifier = Modifier.size(imageSizeDp).testTag(testTagValue),
+                    modifier = Modifier.size(imageSizeDp),
                     tint = tintColor,
                     tintCap = cap
                 )
@@ -56,10 +59,10 @@ class ImageTintCapTest {
         val w = bmp.width
         val h = bmp.height
         return intArrayOf(
-            bmp.getPixel(w * 14 / 64, h * 50 / 64),
-            bmp.getPixel(w * 22 / 64, h * 48 / 64),
-            bmp.getPixel(w * 50 / 64, h * 38 / 64),
-            bmp.getPixel(w * 22 / 64, h * 30 / 64)
+            bmp.getPixel(w * 12 / 64, h * 54 / 64),  // front tire (wheels group)
+            bmp.getPixel(w * 32 / 64, h * 46 / 64),  // body chassis strip
+            bmp.getPixel(w * 52 / 64, h * 32 / 64),  // cab shell (below window)
+            bmp.getPixel(w * 20 / 64, h * 20 / 64)   // cargo box
         )
     }
 
