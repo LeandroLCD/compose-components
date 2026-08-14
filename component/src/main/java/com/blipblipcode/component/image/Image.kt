@@ -26,7 +26,7 @@ import androidx.compose.ui.graphics.DefaultAlpha
  *   [ColorFilter] is left untouched.
  */
 @Composable
-fun Image(
+fun ImageComponents(
     imageVector: ImageVector,
     contentDescription: String?,
     modifier: Modifier = Modifier,

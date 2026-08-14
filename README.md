@@ -18,8 +18,8 @@ Una librería de componentes de UI altamente personalizables para **Jetpack Comp
   - [SliderComponent](#1-slidercomponent)
   - [LinearProgressIndicatorComponents](#2-linearprogressindicatorcomponents)
   - [RangeSliderComponent](#3-rangeslidercomponent)
-  - [Icon (con `tintCap`)](#4-icon-con-tintcap)
-  - [Image (con `tintCap`)](#5-image-con-tintcap)
+  - [IconComponents (con `tintCap`)](#4-iconcomponents-con-tintcap)
+  - [ImageComponents (con `tintCap`)](#5-imagecomponents-con-tintcap)
 - [🎨 Sistema de Colores](#-sistema-de-colores)
 - [🧪 Tests](#-tests)
 - [📁 Estructura del Proyecto](#-estructura-del-proyecto)
@@ -149,7 +149,7 @@ RangeSliderComponent(
 
 ---
 
-### 4. Icon (con `tintCap`)
+### 4. IconComponents (con `tintCap`)
 
 Wrapper sobre `androidx.compose.material3.Icon` que añade el parámetro `tintCap` para controlar qué capas (layers) de un `ImageVector` reciben el color de `tint`. Las capas no afectadas conservan sus colores originales.
 
@@ -179,14 +179,14 @@ Wrapper sobre `androidx.compose.material3.Icon` que añade el parámetro `tintCa
 
 ```kotlin
 // Default: pinta todas las capas
-Icon(
+IconComponents(
     imageVector = Icons.Filled.Favorite,
     contentDescription = null,
     tint = Color.Red
 )
 
 // Pinta solo la capa top-level en el índice 1
-Icon(
+IconComponents(
     imageVector = Icons.Filled.Favorite,
     contentDescription = null,
     tint = Color.Red,
@@ -194,7 +194,7 @@ Icon(
 )
 
 // Pinta el rango 0..2 y respeta el resto
-Icon(
+IconComponents(
     imageVector = Icons.Filled.Favorite,
     contentDescription = null,
     tint = Color.Red,
@@ -202,7 +202,7 @@ Icon(
 )
 
 // Pinta múltiples capas específicas
-Icon(
+IconComponents(
     imageVector = Icons.Filled.Favorite,
     contentDescription = null,
     tint = Color.Red,
@@ -210,7 +210,7 @@ Icon(
 )
 
 // Respeta los colores originales del vector ignorando tint
-Icon(
+IconComponents(
     imageVector = Icons.Filled.Favorite,
     contentDescription = null,
     tint = Color.Red, // se ignora por estar Undefined
@@ -232,7 +232,7 @@ El módulo incluye un `ImageVector` de camión multi-capa pensado para ejercitar
 Úsalo para prototipar y validar el comportamiento de `tintCap` sin necesidad de un asset externo:
 
 ```kotlin
-Icon(
+IconComponents(
     imageVector = Icons.MapTruck,
     contentDescription = "Truck",
     tint = Color.Yellow,
@@ -242,9 +242,9 @@ Icon(
 
 ---
 
-### 5. Image (con `tintCap`)
+### 5. ImageComponents (con `tintCap`)
 
-Wrapper sobre `androidx.compose.foundation.Image` con la misma potencia de `tintCap` que `Icon`. Pensado para vectores con varias capas donde queremos preservar colores originales (logos, ilustraciones, etc.).
+Wrapper sobre `androidx.compose.foundation.Image` con la misma potencia de `tintCap` que `IconComponents`. Pensado para vectores con varias capas donde queremos preservar colores originales (logos, ilustraciones, etc.).
 
 **Propiedades personalizables:**
 | Propiedad | Tipo | Descripción |
@@ -263,7 +263,7 @@ Wrapper sobre `androidx.compose.foundation.Image` con la misma potencia de `tint
 
 ```kotlin
 // Logo con fondo original y un solo trazo tintado
-Image(
+ImageComponents(
     imageVector = myBrandLogo,
     contentDescription = "Logo",
     modifier = Modifier.size(120.dp),
@@ -272,7 +272,7 @@ Image(
 )
 
 // Todas las capas pintadas con tint
-Image(
+ImageComponents(
     imageVector = myBrandLogo,
     contentDescription = "Logo",
     modifier = Modifier.size(120.dp),
@@ -281,7 +281,7 @@ Image(
 )
 
 // Colores originales del vector intactos (sin transformación)
-Image(
+ImageComponents(
     imageVector = myBrandLogo,
     contentDescription = "Logo",
     modifier = Modifier.size(120.dp),
@@ -333,8 +333,8 @@ Cada componente está cubierto por tests. Para ejecutarlos:
 | `RangeSliderComponent` | — | — |
 | `TintCap` | ✅ 9 tests | ✅ vía `Icon` / `Image` |
 | `ImageVectorTinter` | ✅ 7 tests | ✅ vía `Icon` / `Image` |
-| `Icon` (con `tintCap`) | — | ✅ 6 tests |
-| `Image` (con `tintCap`) | — | ✅ 5 tests |
+| `IconComponents` (con `tintCap`) | — | ✅ 6 tests |
+| `ImageComponents` (con `tintCap`) | — | ✅ 5 tests |
 
 Los UI tests renderizan el fixture `Icons.MapTruck` (4 capas top-level con colores distinguibles) y muestrean píxeles del bitmap capturado para verificar que cada variante de `tintCap` pinta exactamente las capas correctas.
 
@@ -359,11 +359,11 @@ composecomponents/
 │       ├── range/                                # RangeSliderComponent
 │       │   ├── RangeSliderComponent.kt
 │       │   └── RangeSliderDefaults.kt
-│       └── image/                                # Icon e Image con tintCap
+│       └── image/                                # IconComponents e ImageComponents con tintCap
 │           ├── TintCap.kt                        # Sealed class (All / Undefined / Index / Range / Layers)
 │           ├── ImageVectorTinter.kt              # Lógica interna de re-tintado selectivo
-│           ├── Icon.kt                           # Wrapper de Material3 Icon
-│           ├── Image.kt                          # Wrapper de Foundation Image
+│           ├── Icon.kt                           # Wrapper de Material3 Icon → IconComponents
+│           ├── Image.kt                          # Wrapper de Foundation Image → ImageComponents
 │           └── MapTruck.kt                       # Fixture ImageVector de 4 capas
 │   └── src/test/                                 # Tests unitarios (JVM)
 │       └── java/com/blipblipcode/component/image/

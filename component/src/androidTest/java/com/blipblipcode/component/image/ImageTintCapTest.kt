@@ -45,7 +45,7 @@ class ImageTintCapTest {
                     .background(Color.White)
                     .testTag(testTagValue)
             ) {
-                Image(
+                ImageComponents(
                     imageVector = Icons.MapTruck,
                     contentDescription = null,
                     modifier = Modifier.size(imageSizeDp),

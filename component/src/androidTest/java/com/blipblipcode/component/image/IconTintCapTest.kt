@@ -60,7 +60,7 @@ class IconTintCapTest {
                         .background(Color.White)
                         .testTag(testTagValue)
                 ) {
-                    Icon(
+                    IconComponents(
                         imageVector = Icons.MapTruck,
                         contentDescription = null,
                         modifier = Modifier.size(iconSizeDp),

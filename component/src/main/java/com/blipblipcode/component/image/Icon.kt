@@ -16,7 +16,7 @@ import androidx.compose.ui.graphics.vector.ImageVector
  * @see TintCap
  */
 @Composable
-fun Icon(
+fun IconComponents(
     imageVector: ImageVector,
     contentDescription: String?,
     modifier: Modifier = Modifier,
