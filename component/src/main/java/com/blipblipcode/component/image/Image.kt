@@ -1,15 +1,20 @@
 package com.blipblipcode.component.image
 
+import android.graphics.Bitmap
+import android.graphics.drawable.BitmapDrawable
+import android.graphics.drawable.Drawable
 import androidx.compose.foundation.Image as FoundationImage
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ColorFilter
+import androidx.compose.ui.graphics.DefaultAlpha
+import androidx.compose.ui.graphics.ImageBitmap
+import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.graphics.painter.BitmapPainter
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
-import androidx.compose.ui.graphics.DefaultAlpha
 
 /**
  * A wrapper around Compose Foundation's [FoundationImage] that adds [tintCap] and
@@ -49,33 +54,77 @@ fun ImageComponents(
     tintStroke: Color? = null,
     tintStrokeCap: TintStroke = TintStroke.All,
 ) {
-    val recolored: ImageVector? = remember(
-        imageVector, tint, tintCap, tintStroke, tintStrokeCap
-    ) {
-        val needsFillRebuild = tint != null &&
-            !tintCap.isUndefined &&
-            tintCap !== TintCap.All
-        val needsStrokeRebuild = tintStroke != null && !tintStrokeCap.isUndefined
+    val effectiveTintColor = tint ?: Color.Unspecified
+    val effectiveVector = rememberRecoloredImageVector(
+        imageVector = imageVector,
+        tint = effectiveTintColor,
+        tintCap = tintCap,
+        tintStroke = tintStroke,
+        tintStrokeCap = tintStrokeCap
+    )
 
-        if (needsFillRebuild || needsStrokeRebuild) {
-            recolorImageVector(imageVector, tint ?: Color.Unspecified, tintCap, tintStroke, tintStrokeCap)
-        } else {
-            null
-        }
-    }
-
-    val strokeNeedsRebuild = tintStroke != null && !tintStrokeCap.isUndefined
     val effectiveColorFilter: ColorFilter? = when {
-        strokeNeedsRebuild -> colorFilter
+        tintStroke != null -> colorFilter
         tint == null -> colorFilter
         tintCap.isUndefined -> colorFilter
         tintCap === TintCap.All -> colorFilter ?: ColorFilter.tint(tint)
         else -> colorFilter
     }
-    val effectiveVector: ImageVector = recolored ?: imageVector
 
     FoundationImage(
         imageVector = effectiveVector,
+        contentDescription = contentDescription,
+        modifier = modifier,
+        alignment = alignment,
+        contentScale = contentScale,
+        alpha = alpha,
+        colorFilter = effectiveColorFilter
+    )
+}
+
+/**
+ * Convenience overload that renders [imageVector] into a [Drawable] (via
+ * [rememberImageVectorAsDrawable]) and then displays it with Compose Foundation's
+ * [FoundationImage].
+ *
+ * Use this when you need the image rasterised, e.g. when handing the bitmap off to APIs that
+ * only accept [Drawable].
+ */
+@Composable
+fun ImageComponents(
+    imageVector: ImageVector,
+    contentDescription: String?,
+    modifier: Modifier = Modifier,
+    alignment: Alignment = Alignment.Center,
+    contentScale: ContentScale = ContentScale.Fit,
+    alpha: Float = DefaultAlpha,
+    colorFilter: ColorFilter? = null,
+    tint: Color? = null,
+    tintCap: TintCap = TintCap.Undefined,
+    tintStroke: Color? = null,
+    tintStrokeCap: TintStroke = TintStroke.All,
+    widthDp: Int = 96,
+    heightDp: Int = 96,
+) {
+    val effectiveTintColor = tint ?: Color.Unspecified
+    val drawable: Drawable = rememberImageVectorAsDrawable(
+        imageVector = imageVector,
+        tint = effectiveTintColor,
+        tintCap = tintCap,
+        tintStroke = tintStroke,
+        tintStrokeCap = tintStrokeCap,
+        widthDp = widthDp,
+        heightDp = heightDp
+    )
+    val bitmap: Bitmap = (drawable as BitmapDrawable).bitmap
+    val imageBitmap: ImageBitmap = bitmap.asImageBitmap()
+    val effectiveColorFilter: ColorFilter? = when {
+        colorFilter != null -> colorFilter
+        tint != null && tintCap === TintCap.All -> ColorFilter.tint(tint)
+        else -> null
+    }
+    FoundationImage(
+        painter = BitmapPainter(imageBitmap),
         contentDescription = contentDescription,
         modifier = modifier,
         alignment = alignment,
